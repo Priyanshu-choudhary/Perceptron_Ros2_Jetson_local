@@ -122,6 +122,44 @@ class JetsonClock:
         return t_send + offset, diff - offset
 
 
+class Stm32Clock:
+    """Recovers when the STM32 actually sampled an odom/IMU frame.
+
+    The Jetson stamps every frame with time.time() at the moment its Python
+    serial thread parses it, and that thread reads the port in bursts: measured
+    on the robot, frames the STM32 produced exactly 10 ms apart
+    (timestamp_ms) arrived as ~9 frames stamped within ~1 ms of each other,
+    then an ~85 ms gap. Every consumer saw a 12 Hz staircase instead of a
+    100 Hz signal, and TF lookups inside the gap extrapolated.
+
+    The STM32's own millisecond counter is exact. As in JetsonClock, the
+    minimum of (jetson_stamp - stm32_time) over a short window is the offset
+    between the two clocks, since parse delay is never negative. Adding it
+    back to each frame's counter gives its sample time on the Jetson clock.
+    A counter that goes backwards (STM32 reset, 32-bit wrap) restarts the
+    estimate.
+    """
+
+    def __init__(self, window_s=3.0):
+        self._window_s = float(window_s)
+        self._mono = collections.deque()
+        self._last_ms = None
+
+    def update(self, t_parse, stm32_ms):
+        if self._last_ms is not None and stm32_ms < self._last_ms:
+            self._mono.clear()
+        self._last_ms = stm32_ms
+        t_dev = stm32_ms / 1000.0
+        diff = t_parse - t_dev
+        while self._mono and self._mono[-1][1] >= diff:
+            self._mono.pop()
+        self._mono.append((t_parse, diff))
+        cutoff = t_parse - self._window_s
+        while len(self._mono) > 1 and self._mono[0][0] < cutoff:
+            self._mono.popleft()
+        return t_dev + self._mono[0][1]
+
+
 def yaw_to_quaternion(yaw: float) -> tuple:
     half = yaw * 0.5
     return (0.0, 0.0, math.sin(half), math.cos(half))
@@ -148,6 +186,30 @@ class JetsonBridgeNode(Node):
         # worse than no scan: SLAM acts on it and rewrites the map. 0 disables.
         self.declare_parameter('max_sensor_age', 0.5)
         self.declare_parameter('clock_window_s', 3.0)
+        # Output rate limits. 0 keeps the old behaviour: one ROS message per
+        # STM32 frame, i.e. ~100 Hz of /odom, /tf and both battery topics.
+        # Measured on the Jetson Nano, that republishing (plus every TF
+        # listener waking for it) was the largest single CPU cost of the
+        # stack. Odometry is still integrated from EVERY sample; only the
+        # publishing is decimated. 50 Hz is plenty for DWB and the EKF (30 Hz),
+        # and battery voltage is a 1-2 Hz quantity.
+        self.declare_parameter('odom_publish_hz', 0.0)
+        self.declare_parameter('battery_publish_hz', 0.0)
+        # Skip IMU conditioning and publishing while nothing subscribes to
+        # /imu/data_raw (the EKF is the only consumer; with ekf:=false the
+        # work was done ~100 times a second for nobody).
+        self.declare_parameter('imu_lazy', False)
+        # Stamp odom/IMU with the STM32's own sample time (see Stm32Clock)
+        # instead of the Jetson's burst-y parse time.
+        self.declare_parameter('stm32_time_correction', False)
+        # Date the odom -> base TF this far ahead, with the pose predicted
+        # forward along the measured twist. Telemetry reaches this node in
+        # ~85 ms bursts, so the newest transform is always tens of ms old, and
+        # Nav2 lookups that do not wait (the rotation shim, at the start of
+        # every goal) failed with "extrapolation into the future" and aborted
+        # the goal. AMCL does the same for map -> odom (transform_tolerance).
+        # /odom itself keeps its true stamp. 0 disables.
+        self.declare_parameter('tf_future_dating', 0.0)
         # The same gyro conditioning stm32_bridge_node applies. Without this the
         # LAN-bridge path published a raw, biased, unscaled gyro with an all-zero
         # covariance - and since robot.launch.py defaults to use_jetson:=true,
@@ -167,6 +229,16 @@ class JetsonBridgeNode(Node):
         self.auto_arm = self.get_parameter('auto_arm').value
         self.use_imu = bool(self.get_parameter('use_imu').value)
         self.max_sensor_age = float(self.get_parameter('max_sensor_age').value)
+        odom_hz = float(self.get_parameter('odom_publish_hz').value)
+        batt_hz = float(self.get_parameter('battery_publish_hz').value)
+        self._odom_period = 1.0 / odom_hz if odom_hz > 0.0 else 0.0
+        self._batt_period = 1.0 / batt_hz if batt_hz > 0.0 else 0.0
+        self._last_odom_pub = 0.0
+        self._last_batt_pub = 0.0
+        self.imu_lazy = bool(self.get_parameter('imu_lazy').value)
+        self.stm32_clock = (Stm32Clock() if self.get_parameter('stm32_time_correction').value
+                            else None)
+        self.tf_lead = max(0.0, float(self.get_parameter('tf_future_dating').value))
         self.jetson_clock = JetsonClock(
             float(self.get_parameter('clock_window_s').value))
         self.odom_x = 0.0
@@ -206,7 +278,12 @@ class JetsonBridgeNode(Node):
 
         # Telemetry SUB socket
         self.sub_socket = self.zmq_context.socket(zmq.SUB)
-        self.sub_socket.setsockopt(zmq.SUBSCRIBE, b"")  # Subscribe to all topics
+        # Only the topics handled below. ZMQ filters at the publisher, so the
+        # ~200 Hz of raw b"reply" frames (a copy of every STM32 frame, meant
+        # for other tools) no longer cross the link or wake this thread only
+        # to be discarded.
+        for topic in (b'scan', b'odom', b'imu', b'battery', b'heartbeat'):
+            self.sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
         self.sub_socket.setsockopt(zmq.RCVTIMEO, 1000)   # 1s timeout
         # Bound the receive queue to match the publisher, which already caps
         # its own side at 20 (jetson_robot_bridge.py: pub_socket.set_hwm(20)).
@@ -312,6 +389,9 @@ class JetsonBridgeNode(Node):
             # Payload carries no stamp: fall back to arrival time, which is
             # what every message used to do.
             return t_recv, 0.0
+        stm32_ms = data.get('timestamp_ms')
+        if self.stm32_clock is not None and stm32_ms is not None:
+            t_send = self.stm32_clock.update(t_send, float(stm32_ms))
         return self.jetson_clock.update(t_send, t_recv)
 
     def _too_stale(self, age, what):
@@ -447,6 +527,34 @@ class JetsonBridgeNode(Node):
                     self.odom_yaw = math.atan2(math.sin(self.odom_yaw), math.cos(self.odom_yaw))
             self.last_odom_time = stamp_s
 
+        # The wheels are what license the ZUPT and the bias tracker. Updated on
+        # every sample, before any publish decimation below.
+        #
+        # Use the per-wheel velocities the Jetson forwards rather than the vx/wz
+        # it derived from them: those come straight off the STM32 as INTEGER
+        # mm/s, so a stopped wheel is exactly 0 and "still" is exact. Testing
+        # the derived floats instead would make standstill depend on rounding.
+        if self.use_imu:
+            left = data.get('left_vel_ms')
+            right = data.get('right_vel_ms')
+            if left is None or right is None:
+                # Older Jetson bridge payloads carry only the derived velocities.
+                moving = (abs(float(vx)) > 1e-6 or abs(float(wz)) > 1e-6)
+            else:
+                moving = (left != 0.0 or right != 0.0)
+            self.gyro.set_wheel_motion(moving)
+
+        # Decimate on the SAMPLE stamp, not on arrival time: frames reach this
+        # thread in bursts, and an arrival-time limit let through one per burst
+        # (~14 Hz, with gaps TF consumers then extrapolated across). On stamps
+        # it is exactly every Nth sample, evenly spaced. A backwards stamp
+        # (clock correction) publishes immediately.
+        if self._odom_period > 0.0:
+            since = stamp_s - self._last_odom_pub
+            if 0.0 <= since < self._odom_period * 0.95:
+                return
+            self._last_odom_pub = stamp_s
+
         odom_msg.pose.pose.position.x = float(self.odom_x)
         odom_msg.pose.pose.position.y = float(self.odom_y)
         odom_msg.pose.pose.position.z = 0.0
@@ -463,38 +571,36 @@ class JetsonBridgeNode(Node):
         odom_msg.twist.twist.angular.z = float(data.get('wz', 0.0))
         odom_msg.twist.covariance = _diag6(TWIST_COV_DIAG)
 
-        # The wheels are what license the ZUPT and the bias tracker.
-        #
-        # Use the per-wheel velocities the Jetson forwards rather than the vx/wz
-        # it derived from them: those come straight off the STM32 as INTEGER
-        # mm/s, so a stopped wheel is exactly 0 and "still" is exact. Testing
-        # the derived floats instead would make standstill depend on rounding.
-        if self.use_imu:
-            left = data.get('left_vel_ms')
-            right = data.get('right_vel_ms')
-            if left is None or right is None:
-                # Older Jetson bridge payloads carry only the derived velocities.
-                moving = (abs(odom_msg.twist.twist.linear.x) > 1e-6
-                          or abs(odom_msg.twist.twist.angular.z) > 1e-6)
-            else:
-                moving = (left != 0.0 or right != 0.0)
-            self.gyro.set_wheel_motion(moving)
-
         self.odom_pub.publish(odom_msg)
 
         if self.publish_tf:
             t = TransformStamped()
-            t.header.stamp = stamp
             t.header.frame_id = self.odom_frame_id
             t.child_frame_id = self.base_frame_id
-            t.transform.translation.x = odom_msg.pose.pose.position.x
-            t.transform.translation.y = odom_msg.pose.pose.position.y
             t.transform.translation.z = 0.0
-            t.transform.rotation = odom_msg.pose.pose.orientation
+            if self.tf_lead > 0.0:
+                lead = self.tf_lead
+                v, w = float(vx), float(wz)
+                yaw_mid = self.odom_yaw + w * lead * 0.5
+                t.header.stamp = _stamp_from_seconds(stamp_s + lead)
+                t.transform.translation.x = self.odom_x + v * math.cos(yaw_mid) * lead
+                t.transform.translation.y = self.odom_y + v * math.sin(yaw_mid) * lead
+                qx, qy, qz, qw = yaw_to_quaternion(self.odom_yaw + w * lead)
+                t.transform.rotation.x = qx
+                t.transform.rotation.y = qy
+                t.transform.rotation.z = qz
+                t.transform.rotation.w = qw
+            else:
+                t.header.stamp = stamp
+                t.transform.translation.x = odom_msg.pose.pose.position.x
+                t.transform.translation.y = odom_msg.pose.pose.position.y
+                t.transform.rotation = odom_msg.pose.pose.orientation
             self.tf_broadcaster.sendTransform(t)
 
     def _handle_imu(self, data: dict):
         if not self.use_imu:
+            return
+        if self.imu_lazy and self.imu_pub.get_subscription_count() == 0:
             return
         stamp_s, age = self._sensor_stamp(data)
         if self._too_stale(age, 'imu'):
@@ -539,6 +645,11 @@ class JetsonBridgeNode(Node):
         self.imu_pub.publish(imu_msg)
 
     def _handle_battery(self, data: dict):
+        if self._batt_period > 0.0:
+            now = time.monotonic()
+            if now - self._last_batt_pub < self._batt_period * 0.95:
+                return
+            self._last_batt_pub = now
         v = Float32()
         v.data = float(data.get('voltage', 0.0))
         self.volt_pub.publish(v)
