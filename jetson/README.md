@@ -10,6 +10,22 @@ scp jetson/jetson_path_overlay.py jetson@192.168.1.7:/home/jetson/
 It is version-controlled here anyway, because the alternative is a file that
 exists only on an SD card.
 
+## `jetson_robot_bridge.py` — serial / camera bridge
+
+LiDAR + STM32 over serial and ArUco corners from the USB camera, out over ZMQ
+(PUB :5555, PULL :5556). The copy here is the one running on the robot.
+
+Camera modes:
+
+| flags | camera |
+|---|---|
+| (none) | always on, 5 Hz detection (`robot start ... aruco=true`) |
+| `--aruco-on-demand` | closed, OpenCV not even imported, until `{'aruco_enable': true, 'hold': s, 'rate': Hz}` arrives on :5556; closes again when `hold` runs out. `robot` uses this by default; the dock tool resends it every second while docking. |
+| `--no-aruco` | no camera thread at all |
+
+`aruco_enable` deliberately does not refresh the motor watchdog, so a camera
+keepalive can never keep a robot moving whose `/cmd_vel` source died.
+
 ## `jetson_path_overlay.py` — AR path overlay renderer
 
 Draws the Nav2 plan onto the live camera and streams the result back as H.265.
