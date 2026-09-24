@@ -1,0 +1,43 @@
+--- a/src/perceptron_hardware/perceptron_hardware/jetson_bridge_node.py
++++ b/src/perceptron_hardware/perceptron_hardware/jetson_bridge_node.py
+@@ -206,7 +206,8 @@
+ 
+         # Telemetry SUB socket
+         self.sub_socket = self.zmq_context.socket(zmq.SUB)
+-        self.sub_socket.setsockopt(zmq.SUBSCRIBE, b"")  # Subscribe to all topics
++        for _t in (b'scan', b'odom', b'imu', b'battery', b'heartbeat'):
++            self.sub_socket.setsockopt(zmq.SUBSCRIBE, _t)
+         self.sub_socket.setsockopt(zmq.RCVTIMEO, 1000)   # 1s timeout
+         # Bound the receive queue to match the publisher, which already caps
+         # its own side at 20 (jetson_robot_bridge.py: pub_socket.set_hwm(20)).
+@@ -447,6 +448,10 @@
+                     self.odom_yaw = math.atan2(math.sin(self.odom_yaw), math.cos(self.odom_yaw))
+             self.last_odom_time = stamp_s
+ 
++        now_m = time.monotonic()
++        if now_m - getattr(self, '_last_odom_pub', 0.0) < 0.019:
++            return
++        self._last_odom_pub = now_m
+         odom_msg.pose.pose.position.x = float(self.odom_x)
+         odom_msg.pose.pose.position.y = float(self.odom_y)
+         odom_msg.pose.pose.position.z = 0.0
+@@ -494,7 +499,7 @@
+             self.tf_broadcaster.sendTransform(t)
+ 
+     def _handle_imu(self, data: dict):
+-        if not self.use_imu:
++        if not self.use_imu or self.imu_pub.get_subscription_count() == 0:
+             return
+         stamp_s, age = self._sensor_stamp(data)
+         if self._too_stale(age, 'imu'):
+@@ -539,6 +544,10 @@
+         self.imu_pub.publish(imu_msg)
+ 
+     def _handle_battery(self, data: dict):
++        now = time.monotonic()
++        if now - getattr(self, '_last_batt', 0.0) < 0.5:
++            return
++        self._last_batt = now
+         v = Float32()
+         v.data = float(data.get('voltage', 0.0))
+         self.volt_pub.publish(v)

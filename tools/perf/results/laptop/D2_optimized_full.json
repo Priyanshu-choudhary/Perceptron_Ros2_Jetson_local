@@ -1,0 +1,391 @@
+{
+ "name": "D2_optimized_full",
+ "cmd": [
+  "ros2",
+  "launch",
+  "/tmp/claude-1000/-home-laptop-perceptron-test-ws--claude-worktrees-jetson-cpu-profiling-nav2-cb9a17/271bd252-ba48-4cd1-b3a1-be3d1fe4fe20/scratchpad/harness/profile_nav.launch.py",
+  "jetson:=127.0.0.1",
+  "map:=/home/laptop/perceptron_test_ws/src/perceptron_navigation/maps/room_map.yaml",
+  "overlay:=false",
+  "ekf:=false",
+  "rviz:=false",
+  "aruco:=false",
+  "bond:=false",
+  "use_composition:=True",
+  "params_file:=/tmp/claude-1000/-home-laptop-perceptron-test-ws--claude-worktrees-jetson-cpu-profiling-nav2-cb9a17/271bd252-ba48-4cd1-b3a1-be3d1fe4fe20/scratchpad/harness/../params/optimized.yaml"
+ ],
+ "launch_args": [
+  "jetson:=127.0.0.1",
+  "map:=/home/laptop/perceptron_test_ws/src/perceptron_navigation/maps/room_map.yaml",
+  "overlay:=false",
+  "ekf:=false",
+  "rviz:=false",
+  "aruco:=false",
+  "bond:=false",
+  "use_composition:=True"
+ ],
+ "params_file": "/tmp/claude-1000/-home-laptop-perceptron-test-ws--claude-worktrees-jetson-cpu-profiling-nav2-cb9a17/271bd252-ba48-4cd1-b3a1-be3d1fe4fe20/scratchpad/harness/../params/optimized.yaml",
+ "amcl_set": {
+  "max_beams": 60,
+  "max_particles": 800,
+  "min_particles": 200
+ },
+ "started": "2026-09-23 12:26:31",
+ "amcl_set_result": [
+  [
+   true,
+   ""
+  ],
+  [
+   true,
+   ""
+  ],
+  [
+   true,
+   ""
+  ]
+ ],
+ "startup_s": 7.944165229797363,
+ "idle": {
+  "seconds": 30.278787285998987,
+  "procs": {
+   "ros2_launch": {
+    "pid": 55977,
+    "cores": 0.0036329063961839836,
+    "p95": 0.009976699518038574,
+    "max": 0.009984222023773578,
+    "stdev": 0.004769091060659989,
+    "threads_total": 22,
+    "threads_cpu": {
+     "ros2": 0.0033026421783490757
+    },
+    "pss_kb": 45107,
+    "rss_kb": 69528,
+    "uss_kb": 41592
+   },
+   "nav2_container": {
+    "pid": 55994,
+    "cores": 0.3976381182732287,
+    "p95": 0.4288855122610817,
+    "max": 0.44907071148096533,
+    "stdev": 0.021266429019087964,
+    "threads_total": 34,
+    "threads_cpu": {
+     "component_conta": 0.3996197035802383
+    },
+    "pss_kb": 73199,
+    "rss_kb": 92512,
+    "uss_kb": 69696
+   },
+   "robot_state_publisher": {
+    "pid": 55996,
+    "cores": 0.013210568713396304,
+    "p95": 0.019968444047547156,
+    "max": 0.029865405338863022,
+    "stdev": 0.008184670076347626,
+    "threads_total": 11,
+    "threads_cpu": {
+     "robot_state_pub": 0.013540832931231211
+    },
+    "pss_kb": 13351,
+    "rss_kb": 29308,
+    "uss_kb": 11264
+   },
+   "joint_state_publisher": {
+    "pid": 55998,
+    "cores": 0.02476981633761807,
+    "p95": 0.03991282655517864,
+    "max": 0.03992046414388805,
+    "stdev": 0.009819250513371982,
+    "threads_total": 11,
+    "threads_cpu": {
+     "joint_state_pub": 0.024769816337618072
+    },
+    "pss_kb": 37153.333333333336,
+    "rss_kb": 62389.333333333336,
+    "uss_kb": 33305.333333333336
+   },
+   "jetson_bridge_node": {
+    "pid": 56000,
+    "cores": 0.4316553327102242,
+    "p95": 0.4680438066974687,
+    "max": 0.4790087589130297,
+    "stdev": 0.023680545727134735,
+    "threads_total": 14,
+    "threads_cpu": {
+     "jetson_bridge_n": 0.40457366684776186,
+     "ZMQbg/IO/0": 0.025100080555452976,
+     "ZMQbg/Reaper": 0.0
+    },
+    "pss_kb": 42648,
+    "rss_kb": 69896,
+    "uss_kb": 37904
+   },
+   "battery_node": {
+    "pid": 56002,
+    "cores": 0.25694556147555814,
+    "p95": 0.27883460824530054,
+    "max": 0.2993804743206436,
+    "stdev": 0.01753792031019774,
+    "threads_total": 11,
+    "threads_cpu": {
+     "battery_node": 0.2566152972577232
+    },
+    "pss_kb": 36250.333333333336,
+    "rss_kb": 61221.333333333336,
+    "uss_kb": 32485.333333333332
+   },
+   "map_server": {
+    "pid": 56004,
+    "cores": 0.033356686001325665,
+    "p95": 0.03993688809509431,
+    "max": 0.04883939903152756,
+    "stdev": 0.008240076949333716,
+    "threads_total": 11,
+    "threads_cpu": {
+     "map_server": 0.033356686001325665
+    },
+    "pss_kb": 19784,
+    "rss_kb": 36888,
+    "uss_kb": 17476
+   },
+   "amcl": {
+    "pid": 56006,
+    "cores": 0.09412530208294867,
+    "p95": 0.09984222023773577,
+    "max": 0.10974369469842432,
+    "stdev": 0.007143362731877309,
+    "threads_total": 13,
+    "threads_cpu": {
+     "amcl": 0.09313450942944394
+    },
+    "pss_kb": 18979,
+    "rss_kb": 37020,
+    "uss_kb": 16004
+   },
+   "lifecycle_manager_localization": {
+    "pid": 56008,
+    "cores": 0.04128302722936345,
+    "p95": 0.049896745720107265,
+    "max": 0.049921110118867885,
+    "stdev": 0.005226529772922354,
+    "threads_total": 13,
+    "threads_cpu": {
+     "lifecycle_manag": 0.041283027229363445
+    },
+    "pss_kb": 12905,
+    "rss_kb": 29780,
+    "uss_kb": 10428
+   }
+  },
+  "total_cores": 1.2966173192198471,
+  "total_pss_mb": 292.3600260416667,
+  "total_rss_mb": 477.0924479166667,
+  "system_busy_cores": 1.8012713282034127,
+  "ncpu": 8,
+  "extra": {
+   "profiler_driver(self)": {
+    "cores": 0.3041733446259499,
+    "rss_kb": 67332
+   }
+  },
+  "t_start": 1790146610.6753328,
+  "t_end": 1790146640.9758887,
+  "msgs": {
+   "cmd_vel_nav": 0,
+   "cmd_vel": 0
+  },
+  "jetson_hz": {
+   "odom": 100.92874497034776,
+   "scan": 10.0070058003977
+  }
+ },
+ "nav": {
+  "seconds": 25.159153846001573,
+  "procs": {
+   "ros2_launch": {
+    "pid": 55977,
+    "cores": 0.010334210824078274,
+    "p95": 0.01970490336727978,
+    "max": 0.019959445560228602,
+    "stdev": 0.005902765552434797,
+    "threads_total": 22,
+    "threads_cpu": {
+     "ros2": 0.00993674117699834
+    },
+    "pss_kb": 45105,
+    "rss_kb": 69528,
+    "uss_kb": 41592
+   },
+   "nav2_container": {
+    "pid": 55994,
+    "cores": 0.5540726880294274,
+    "p95": 0.6389323198138466,
+    "max": 0.6514313881170236,
+    "stdev": 0.0671773598133026,
+    "threads_total": 36,
+    "threads_cpu": {
+     "component_conta": 0.5528802790881877
+    },
+    "pss_kb": 87549.8,
+    "rss_kb": 106980.8,
+    "uss_kb": 84040.8
+   },
+   "robot_state_publisher": {
+    "pid": 55996,
+    "cores": 0.009539271529918406,
+    "p95": 0.019959445560228602,
+    "max": 0.019966246740478685,
+    "stdev": 0.006606261497277437,
+    "threads_total": 11,
+    "threads_cpu": {
+     "robot_state_pub": 0.009141801882838474
+    },
+    "pss_kb": 13351,
+    "rss_kb": 29308,
+    "uss_kb": 11264
+   },
+   "joint_state_publisher": {
+    "pid": 55998,
+    "cores": 0.018283603765676948,
+    "p95": 0.02994430006839188,
+    "max": 0.029949991391192515,
+    "stdev": 0.007766936315364238,
+    "threads_total": 11,
+    "threads_cpu": {
+     "joint_state_pub": 0.018283603765676944
+    },
+    "pss_kb": 37161.2,
+    "rss_kb": 62399.2,
+    "uss_kb": 33315.2
+   },
+   "jetson_bridge_node": {
+    "pid": 56000,
+    "cores": 0.3136035515460676,
+    "p95": 0.3692497428642291,
+    "max": 0.3793660648894714,
+    "stdev": 0.03907399738576974,
+    "threads_total": 14,
+    "threads_cpu": {
+     "jetson_bridge_n": 0.29492247813331074,
+     "ZMQbg/IO/0": 0.01868107341275688,
+     "ZMQbg/Reaper": 0.0
+    },
+    "pss_kb": 42650,
+    "rss_kb": 69900,
+    "uss_kb": 37908
+   },
+   "battery_node": {
+    "pid": 56002,
+    "cores": 0.17766893224473032,
+    "p95": 0.2096524304441383,
+    "max": 0.21963298493600975,
+    "stdev": 0.026002748530668057,
+    "threads_total": 11,
+    "threads_cpu": {
+     "battery_node": 0.1772714625976504
+    },
+    "pss_kb": 36265.6,
+    "rss_kb": 61237.6,
+    "uss_kb": 32501.6
+   },
+   "map_server": {
+    "pid": 56004,
+    "cores": 0.023848178824796017,
+    "p95": 0.03991723078363342,
+    "max": 0.039933321854923355,
+    "stdev": 0.00846536534341474,
+    "threads_total": 11,
+    "threads_cpu": {
+     "map_server": 0.023848178824796017
+    },
+    "pss_kb": 19784,
+    "rss_kb": 36888,
+    "uss_kb": 17476
+   },
+   "amcl": {
+    "pid": 56006,
+    "cores": 0.09499524565210414,
+    "p95": 0.11976970083048241,
+    "max": 0.11979996556477006,
+    "stdev": 0.017449923882534395,
+    "threads_total": 13,
+    "threads_cpu": {
+     "amcl": 0.09420030635794427
+    },
+    "pss_kb": 18999.8,
+    "rss_kb": 37040.8,
+    "uss_kb": 16024.8
+   },
+   "lifecycle_manager_localization": {
+    "pid": 56008,
+    "cores": 0.029810223530995023,
+    "p95": 0.039918891120457205,
+    "max": 0.04991724534384246,
+    "stdev": 0.008653653700282971,
+    "threads_total": 13,
+    "threads_cpu": {
+     "lifecycle_manag": 0.028220344942675283
+    },
+    "pss_kb": 12905,
+    "rss_kb": 29780,
+    "uss_kb": 10428
+   }
+  },
+  "total_cores": 1.232155905947794,
+  "total_pss_mb": 306.41738281249997,
+  "total_rss_mb": 491.27187499999997,
+  "system_busy_cores": 1.6508575164713575,
+  "ncpu": 8,
+  "extra": {
+   "profiler_driver(self)": {
+    "cores": 0.27465152613223415,
+    "rss_kb": 67364
+   }
+  },
+  "t_start": 1790146644.9849946,
+  "t_end": 1790146670.1765254,
+  "jetson_hz": {
+   "odom": 100.95729035830314,
+   "scan": 10.016235106414328
+  },
+  "msgs": {
+   "cmd_vel_nav": 252,
+   "cmd_vel": 504
+  },
+  "nonzero_cmd": 504,
+  "amcl_updates_requested": 123,
+  "last_cmd": [
+   0.35,
+   -0.368421052631579
+  ],
+  "log": {
+   "missed_control_rate": 0,
+   "costmap_missed_rate": 0,
+   "no_valid_traj": 0,
+   "failed_progress": 0,
+   "rotating_shim": 0,
+   "planning_failed": 0,
+   "tf_errors": 0,
+   "bt_ack_timeout": 0,
+   "goal_succeeded": 0,
+   "goal_aborted": 0,
+   "warn_lines": 1,
+   "error_lines": 3
+  }
+ },
+ "log_total": {
+  "missed_control_rate": 0,
+  "costmap_missed_rate": 0,
+  "no_valid_traj": 0,
+  "failed_progress": 0,
+  "rotating_shim": 0,
+  "planning_failed": 0,
+  "tf_errors": 20,
+  "bt_ack_timeout": 0,
+  "goal_succeeded": 0,
+  "goal_aborted": 0,
+  "warn_lines": 7,
+  "error_lines": 8
+ }
+}

@@ -1,0 +1,587 @@
+{
+ "name": "J11_opt_ctrl",
+ "cmd": [
+  "ros2",
+  "launch",
+  "/work/edge_nav.launch.py",
+  "ekf:=false",
+  "aruco:=false",
+  "bond:=false",
+  "lean_bridge:=true",
+  "params_file:=/work/params/optimized.yaml"
+ ],
+ "launch_args": [
+  "ekf:=false",
+  "aruco:=false",
+  "bond:=false",
+  "lean_bridge:=true"
+ ],
+ "params_file": "/work/params/optimized.yaml",
+ "amcl_set": {
+  "max_beams": 60,
+  "max_particles": 800,
+  "min_particles": 200
+ },
+ "started": "2026-09-23 06:26:26",
+ "amcl_set_result": [
+  [
+   true,
+   ""
+  ],
+  [
+   true,
+   ""
+  ],
+  [
+   true,
+   ""
+  ]
+ ],
+ "startup_s": 12.355513334274292,
+ "idle": {
+  "seconds": 30.427870076000545,
+  "procs": {
+   "ros2_launch": {
+    "pid": 13782,
+    "cores": 0.0,
+    "p95": 0.0,
+    "max": 0.0,
+    "stdev": 0.0,
+    "threads_total": 16,
+    "threads_cpu": {
+     "ros2": 0.0
+    },
+    "pss_kb": 31373,
+    "rss_kb": 42160,
+    "uss_kb": 29508
+   },
+   "robot_state_publisher": {
+    "pid": 13794,
+    "cores": 0.00953073610724835,
+    "p95": 0.01984365854134944,
+    "max": 0.01993500488688442,
+    "stdev": 0.0064584363431169686,
+    "threads_total": 12,
+    "threads_cpu": {
+     "robot_state_pub": 0.009202090034584614
+    },
+    "pss_kb": 14782,
+    "rss_kb": 30724,
+    "uss_kb": 13544
+   },
+   "joint_state_publisher": {
+    "pid": 13796,
+    "cores": 0.030235438685063735,
+    "p95": 0.03987149858577739,
+    "max": 0.04979866047994858,
+    "stdev": 0.008189437427701894,
+    "threads_total": 12,
+    "threads_cpu": {
+     "joint_state_pub": 0.0308927308303912
+    },
+    "pss_kb": 39323,
+    "rss_kb": 63306,
+    "uss_kb": 35278
+   },
+   "jetson_bridge_node": {
+    "pid": 13798,
+    "cores": 0.15512094629728349,
+    "p95": 0.1689515362687273,
+    "max": 0.16948056376551615,
+    "stdev": 0.01225901712665525,
+    "threads_total": 15,
+    "threads_cpu": {
+     "python3": 0.14263239553606152,
+     "ZMQbg/IO/0": 0.01314584290654945,
+     "ZMQbg/Reaper": 0.0
+    },
+    "pss_kb": 44323.333333333336,
+    "rss_kb": 69841.33333333333,
+    "uss_kb": 39245.333333333336
+   },
+   "battery_node": {
+    "pid": 13800,
+    "cores": 0.01380313505187692,
+    "p95": 0.01993500488688442,
+    "max": 0.019938889854766606,
+    "stdev": 0.005424000760840316,
+    "threads_total": 12,
+    "threads_cpu": {
+     "python3": 0.013145842906549448
+    },
+    "pss_kb": 34893.333333333336,
+    "rss_kb": 58821.333333333336,
+    "uss_kb": 30901.333333333332
+   },
+   "map_server": {
+    "pid": 13804,
+    "cores": 0.001314584290654945,
+    "p95": 0.009629009367362027,
+    "max": 0.009970772763534256,
+    "stdev": 0.003327384118558637,
+    "threads_total": 12,
+    "threads_cpu": {
+     "map_server": 0.001314584290654945
+    },
+    "pss_kb": 18252,
+    "rss_kb": 35588,
+    "uss_kb": 16928
+   },
+   "amcl": {
+    "pid": 13814,
+    "cores": 0.016103657560523073,
+    "p95": 0.019941545527068512,
+    "max": 0.02989348157348374,
+    "stdev": 0.005939727481810274,
+    "threads_total": 14,
+    "threads_cpu": {
+     "amcl": 0.017089595778514283
+    },
+    "pss_kb": 17470,
+    "rss_kb": 35944,
+    "uss_kb": 15916
+   },
+   "lifecycle_manager_localization": {
+    "pid": 13817,
+    "cores": 0.001314584290654945,
+    "p95": 0.009629009367362027,
+    "max": 0.009967795806076263,
+    "stdev": 0.0033270354420266287,
+    "threads_total": 14,
+    "threads_cpu": {
+     "lifecycle_manag": 0.0006572921453274725
+    },
+    "pss_kb": 11689,
+    "rss_kb": 28656,
+    "uss_kb": 10248
+   },
+   "controller_server": {
+    "pid": 13819,
+    "cores": 0.06967296740471209,
+    "p95": 0.0797008065992099,
+    "max": 0.0797423664486101,
+    "stdev": 0.007278472929361718,
+    "threads_total": 17,
+    "threads_cpu": {
+     "controller_serv": 0.06868702918672087
+    },
+    "pss_kb": 23258,
+    "rss_kb": 43160,
+    "uss_kb": 20596
+   },
+   "smoother_server": {
+    "pid": 13821,
+    "cores": 0.011502612543230767,
+    "p95": 0.01990440198370742,
+    "max": 0.019935749292888695,
+    "stdev": 0.005773925075025194,
+    "threads_total": 14,
+    "threads_cpu": {
+     "smoother_server": 0.01215990468855824
+    },
+    "pss_kb": 14501,
+    "rss_kb": 33208,
+    "uss_kb": 12664
+   },
+   "planner_server": {
+    "pid": 13823,
+    "cores": 0.02103334865047912,
+    "p95": 0.029776742027992426,
+    "max": 0.029910536687452458,
+    "stdev": 0.0049076843779501484,
+    "threads_total": 18,
+    "threads_cpu": {
+     "planner_server": 0.02103334865047912
+    },
+    "pss_kb": 22931,
+    "rss_kb": 42798,
+    "uss_kb": 20266
+   },
+   "behavior_server": {
+    "pid": 13825,
+    "cores": 0.014460427197204393,
+    "p95": 0.02888702810208608,
+    "max": 0.02990362393933304,
+    "stdev": 0.007551571800183863,
+    "threads_total": 13,
+    "threads_cpu": {
+     "behavior_server": 0.015446365415195602
+    },
+    "pss_kb": 18231,
+    "rss_kb": 38004,
+    "uss_kb": 15876
+   },
+   "bt_navigator": {
+    "pid": 13827,
+    "cores": 0.02169064079580659,
+    "p95": 0.02988126175648912,
+    "max": 0.02990833478214991,
+    "stdev": 0.004747513296984688,
+    "threads_total": 12,
+    "threads_cpu": {
+     "bt_navigator": 0.0226765790137978
+    },
+    "pss_kb": 29550,
+    "rss_kb": 48536,
+    "uss_kb": 27620
+   },
+   "waypoint_follower": {
+    "pid": 13829,
+    "cores": 0.0006572921453274725,
+    "p95": 0.0,
+    "max": 0.009967795806076263,
+    "stdev": 0.0024857572829959243,
+    "threads_total": 12,
+    "threads_cpu": {
+     "waypoint_follow": 0.00032864607266373623
+    },
+    "pss_kb": 12947,
+    "rss_kb": 30372,
+    "uss_kb": 11640
+   },
+   "velocity_smoother": {
+    "pid": 13831,
+    "cores": 0.0062442753806109886,
+    "p95": 0.009969444927383303,
+    "max": 0.019283846386243895,
+    "stdev": 0.0053628630595141625,
+    "threads_total": 12,
+    "threads_cpu": {
+     "velocity_smooth": 0.0062442753806109886
+    },
+    "pss_kb": 12121,
+    "rss_kb": 28568,
+    "uss_kb": 10940
+   },
+   "lifecycle_manager_navigation": {
+    "pid": 13846,
+    "cores": 0.001314584290654945,
+    "p95": 0.009878102496402573,
+    "max": 0.009941218074581006,
+    "stdev": 0.0033389254091335465,
+    "threads_total": 14,
+    "threads_cpu": {
+     "lifecycle_manag": 0.0006572921453274725
+    },
+    "pss_kb": 12162,
+    "rss_kb": 29104,
+    "uss_kb": 10732
+   }
+  },
+  "total_cores": 0.37399923069133184,
+  "total_pss_mb": 349.4205729166667,
+  "total_rss_mb": 643.3502604166666,
+  "system_busy_cores": 1.293452974410103,
+  "ncpu": 4,
+  "extra": {
+   "profiler_driver(self)": {
+    "cores": 0.3608533877847824,
+    "rss_kb": 68492
+   },
+   "jetson_robot_bridge.py(serial)": {
+    "cores": 0.2777059314008571,
+    "rss_kb": 22496
+   }
+  },
+  "t_start": 1790144812.7207947,
+  "t_end": 1790144843.2293122,
+  "msgs": {
+   "cmd_vel_nav": 0,
+   "cmd_vel": 0
+  },
+  "jetson_hz": {
+   "odom": 100.92720891503339,
+   "scan": 10.023705216243954
+  }
+ },
+ "nav": {
+  "seconds": 30.47500945899992,
+  "procs": {
+   "ros2_launch": {
+    "pid": 13782,
+    "cores": 0.001968826296205815,
+    "p95": 0.009931378978051837,
+    "max": 0.009969839868530679,
+    "stdev": 0.003951340964657605,
+    "threads_total": 16,
+    "threads_cpu": {
+     "ros2": 0.001968826296205815
+    },
+    "pss_kb": 31362,
+    "rss_kb": 42160,
+    "uss_kb": 29508
+   },
+   "robot_state_publisher": {
+    "pid": 13794,
+    "cores": 0.007547167468788959,
+    "p95": 0.009970105277413701,
+    "max": 0.01986937720418491,
+    "stdev": 0.005528328498872349,
+    "threads_total": 12,
+    "threads_cpu": {
+     "robot_state_pub": 0.0072190297527546556
+    },
+    "pss_kb": 14774,
+    "rss_kb": 30724,
+    "uss_kb": 13544
+   },
+   "joint_state_publisher": {
+    "pid": 13796,
+    "cores": 0.024610328702572692,
+    "p95": 0.029885649972044938,
+    "max": 0.029903928068931433,
+    "stdev": 0.005018074979723527,
+    "threads_total": 12,
+    "threads_cpu": {
+     "joint_state_pub": 0.02428219098653839
+    },
+    "pss_kb": 39315.666666666664,
+    "rss_kb": 63310.666666666664,
+    "uss_kb": 35282.666666666664
+   },
+   "jetson_bridge_node": {
+    "pid": 13798,
+    "cores": 0.1437243196230245,
+    "p95": 0.15906380310500526,
+    "max": 0.15946948918252227,
+    "stdev": 0.011865323325064616,
+    "threads_total": 15,
+    "threads_cpu": {
+     "python3": 0.13289577499389252,
+     "ZMQbg/IO/0": 0.010828544629131985,
+     "ZMQbg/Reaper": 0.0
+    },
+    "pss_kb": 44318.666666666664,
+    "rss_kb": 69848.66666666667,
+    "uss_kb": 39252.666666666664
+   },
+   "battery_node": {
+    "pid": 13800,
+    "cores": 0.012469233209303496,
+    "p95": 0.01988400625184726,
+    "max": 0.019933686147815283,
+    "stdev": 0.005604533187139329,
+    "threads_total": 12,
+    "threads_cpu": {
+     "python3": 0.011812957777234892
+    },
+    "pss_kb": 34922.333333333336,
+    "rss_kb": 58851.333333333336,
+    "uss_kb": 30931.333333333332
+   },
+   "map_server": {
+    "pid": 13804,
+    "cores": 0.0009844131481029075,
+    "p95": 0.009897990468892533,
+    "max": 0.009956882050857683,
+    "stdev": 0.0029776431561114192,
+    "threads_total": 12,
+    "threads_cpu": {
+     "map_server": 0.0009844131481029075
+    },
+    "pss_kb": 18252,
+    "rss_kb": 35588,
+    "uss_kb": 16928
+   },
+   "amcl": {
+    "pid": 13814,
+    "cores": 0.015094334937577917,
+    "p95": 0.019933686147815283,
+    "max": 0.019940210554827403,
+    "stdev": 0.004959346197439038,
+    "threads_total": 14,
+    "threads_cpu": {
+     "amcl": 0.015094334937577919
+    },
+    "pss_kb": 17462,
+    "rss_kb": 35944,
+    "uss_kb": 15916
+   },
+   "lifecycle_manager_localization": {
+    "pid": 13817,
+    "cores": 0.0009844131481029075,
+    "p95": 0.009941487694062829,
+    "max": 0.009966843073907642,
+    "stdev": 0.002985035734763283,
+    "threads_total": 14,
+    "threads_cpu": {
+     "lifecycle_manag": 0.0016406885801715126
+    },
+    "pss_kb": 11689,
+    "rss_kb": 28656,
+    "uss_kb": 10248
+   },
+   "controller_server": {
+    "pid": 13819,
+    "cores": 0.17194416320197453,
+    "p95": 0.18861269384661628,
+    "max": 0.1893700184042452,
+    "stdev": 0.010221996523884223,
+    "threads_total": 18,
+    "threads_cpu": {
+     "controller_serv": 0.17194416320197453
+    },
+    "pss_kb": 24806.666666666668,
+    "rss_kb": 44716.666666666664,
+    "uss_kb": 22152.666666666668
+   },
+   "smoother_server": {
+    "pid": 13821,
+    "cores": 0.010500406913097681,
+    "p95": 0.019872821020188336,
+    "max": 0.01993595204595429,
+    "stdev": 0.005671720895632135,
+    "threads_total": 14,
+    "threads_cpu": {
+     "smoother_server": 0.009844131481029077
+    },
+    "pss_kb": 14501,
+    "rss_kb": 33208,
+    "uss_kb": 12664
+   },
+   "planner_server": {
+    "pid": 13823,
+    "cores": 0.02198522697429827,
+    "p95": 0.02982886399210401,
+    "max": 0.029910315832241106,
+    "stdev": 0.004983481219625933,
+    "threads_total": 18,
+    "threads_cpu": {
+     "planner_server": 0.020016400678092454
+    },
+    "pss_kb": 25698.666666666668,
+    "rss_kb": 45616.666666666664,
+    "uss_kb": 23020.666666666668
+   },
+   "behavior_server": {
+    "pid": 13825,
+    "cores": 0.0127973709253378,
+    "p95": 0.019933686147815283,
+    "max": 0.019939679737061358,
+    "stdev": 0.0045444469554334855,
+    "threads_total": 13,
+    "threads_cpu": {
+     "behavior_server": 0.012141095493269194
+    },
+    "pss_kb": 18231,
+    "rss_kb": 38004,
+    "uss_kb": 15876
+   },
+   "bt_navigator": {
+    "pid": 13827,
+    "cores": 0.06694009407099773,
+    "p95": 0.06978532394401432,
+    "max": 0.07976084221930961,
+    "stdev": 0.006006210777199094,
+    "threads_total": 13,
+    "threads_cpu": {
+     "bt_navigator": 0.06628381863892911
+    },
+    "pss_kb": 29769.666666666668,
+    "rss_kb": 48972.666666666664,
+    "uss_kb": 27800.666666666668
+   },
+   "waypoint_follower": {
+    "pid": 13829,
+    "cores": 0.007219029752754656,
+    "p95": 0.009967976022977144,
+    "max": 0.0191547407494876,
+    "stdev": 0.005576626453653566,
+    "threads_total": 12,
+    "threads_cpu": {
+     "waypoint_follow": 0.007219029752754656
+    },
+    "pss_kb": 12947,
+    "rss_kb": 30372,
+    "uss_kb": 11640
+   },
+   "velocity_smoother": {
+    "pid": 13831,
+    "cores": 0.01575061036964652,
+    "p95": 0.019939679737061358,
+    "max": 0.029764381938044964,
+    "stdev": 0.005486854657932014,
+    "threads_total": 12,
+    "threads_cpu": {
+     "velocity_smooth": 0.015422472653612218
+    },
+    "pss_kb": 12121,
+    "rss_kb": 28568,
+    "uss_kb": 10940
+   },
+   "lifecycle_manager_navigation": {
+    "pid": 13846,
+    "cores": 0.0009844131481029075,
+    "p95": 0.00953549404577084,
+    "max": 0.009956882050857683,
+    "stdev": 0.002942562363523923,
+    "threads_total": 14,
+    "threads_cpu": {
+     "lifecycle_manag": 0.0013125508641372101
+    },
+    "pss_kb": 12162,
+    "rss_kb": 29104,
+    "uss_kb": 10732
+   }
+  },
+  "total_cores": 0.5155043518898893,
+  "total_pss_mb": 353.8404947916667,
+  "total_rss_mb": 648.0904947916666,
+  "system_busy_cores": 1.3731893159172737,
+  "ncpu": 4,
+  "extra": {
+   "profiler_driver(self)": {
+    "cores": 0.38424926547616833,
+    "rss_kb": 68556
+   },
+   "jetson_robot_bridge.py(serial)": {
+    "cores": 0.24872838875400133,
+    "rss_kb": 22496
+   }
+  },
+  "t_start": 1790144847.2698023,
+  "t_end": 1790144877.84428,
+  "jetson_hz": {
+   "odom": 100.77109259413432,
+   "scan": 10.008200339046228
+  },
+  "msgs": {
+   "cmd_vel_nav": 306,
+   "cmd_vel": 613
+  },
+  "nonzero_cmd": 613,
+  "amcl_updates_requested": 0,
+  "last_cmd": [
+   0.35,
+   0.26315789473684204
+  ],
+  "log": {
+   "missed_control_rate": 2,
+   "costmap_missed_rate": 0,
+   "no_valid_traj": 0,
+   "failed_progress": 0,
+   "rotating_shim": 0,
+   "planning_failed": 0,
+   "tf_errors": 0,
+   "bt_ack_timeout": 0,
+   "goal_succeeded": 0,
+   "goal_aborted": 0,
+   "warn_lines": 3,
+   "error_lines": 3
+  }
+ },
+ "log_total": {
+  "missed_control_rate": 2,
+  "costmap_missed_rate": 0,
+  "no_valid_traj": 0,
+  "failed_progress": 0,
+  "rotating_shim": 0,
+  "planning_failed": 0,
+  "tf_errors": 20,
+  "bt_ack_timeout": 0,
+  "goal_succeeded": 0,
+  "goal_aborted": 0,
+  "warn_lines": 10,
+  "error_lines": 8
+ }
+}

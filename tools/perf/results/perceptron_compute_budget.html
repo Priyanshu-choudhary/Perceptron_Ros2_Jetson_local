@@ -1,0 +1,714 @@
+<title>Perceptron Compute Budget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root {
+  --ground: #f4f6f7;
+  --surface: #fcfcfb;
+  --ink: #15202a;
+  --ink-2: #4a5763;
+  --muted: #7c8792;
+  --hair: #dde3e7;
+  --axis: #c3c9ce;
+  --band: rgba(124, 135, 146, 0.14);
+  --m-idle: #86b6ef;
+  --m-nav: #256abf;
+  --save: #2a78d6;
+  --cost: #e34948;
+  --save-ink: #1c5cab;
+  --cost-ink: #b8322f;
+  --code-bg: #eaeef1;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e1317; --surface: #151b20; --ink: #edf1f4; --ink-2: #b3bec8; --muted: #86919b;
+    --hair: #252e36; --axis: #3a444d; --band: rgba(160, 170, 180, 0.12);
+    --m-idle: #1c5cab; --m-nav: #6da7ec; --save: #3987e5; --cost: #e66767;
+    --save-ink: #86b6ef; --cost-ink: #f08a8a; --code-bg: #1d252c;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e1317; --surface: #151b20; --ink: #edf1f4; --ink-2: #b3bec8; --muted: #86919b;
+  --hair: #252e36; --axis: #3a444d; --band: rgba(160, 170, 180, 0.12);
+  --m-idle: #1c5cab; --m-nav: #6da7ec; --save: #3987e5; --cost: #e66767;
+  --save-ink: #86b6ef; --cost-ink: #f08a8a; --code-bg: #1d252c;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font: 15px/1.6 var(--sans); }
+.wrap { max-width: 1020px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; }
+h1, h2, h3 { font-family: var(--cond); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 26px; font-weight: 600; }
+h3 { font-size: 18px; font-weight: 600; margin-top: 28px; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font: 500 12px/1.4 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+header.top { display: grid; gap: 14px; padding-bottom: 28px; border-bottom: 1px solid var(--hair); }
+header.top .lede { font-size: 17px; color: var(--ink-2); max-width: 72ch; }
+.rig { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 13px/1.5 var(--mono); color: var(--ink-2); }
+.rig b { color: var(--ink); font-weight: 500; }
+section { display: grid; gap: 16px; padding-block: 40px 8px; }
+section > header { display: grid; gap: 6px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 28px; }
+.tile { background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.tl { font-size: 13px; color: var(--ink-2); }
+.tv { font: 600 30px/1.1 var(--sans); }
+.tv small { font-size: 15px; font-weight: 500; color: var(--ink-2); }
+.ts { font: 12px/1.45 var(--mono); color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 16px 16px 10px; overflow-x: auto; }
+.chart { width: 100%; min-width: 620px; height: auto; display: block; font-family: var(--sans); }
+.chart .grid { stroke: var(--hair); stroke-width: 1; }
+.chart .axis0 { stroke: var(--axis); stroke-width: 1.5; }
+.chart .tick { fill: var(--muted); font: 11px var(--mono); }
+.chart .lbl { fill: var(--ink); font-size: 13px; }
+.chart .val { fill: var(--ink-2); font: 12px var(--mono); }
+.chart .axn { fill: var(--muted); font: 11px var(--mono); }
+.chart .m-idle { fill: var(--m-idle); }
+.chart .m-nav { fill: var(--m-nav); }
+.chart .band { fill: var(--band); }
+.chart .conn { stroke: var(--axis); stroke-width: 2; }
+.chart .d-idle { fill: var(--surface); stroke: var(--m-nav); stroke-width: 2; }
+.chart .d-nav { fill: var(--m-nav); stroke: var(--surface); stroke-width: 2; }
+.chart [data-tip] { cursor: default; }
+.chart [data-tip]:hover { opacity: 0.8; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); padding: 4px 2px 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.sw.ring { background: var(--surface); border: 2px solid var(--m-nav); border-radius: 50%; }
+.sw.dot { background: var(--m-nav); border-radius: 50%; }
+.sw.band { background: var(--band); border: 1px solid var(--axis); }
+.tscroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+table.data th { text-align: left; font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.03em; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--hair); vertical-align: bottom; }
+table.data td { padding: 7px 12px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+table.data tr:last-child td { border-bottom: 0; }
+table.data .n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.data th.n { text-align: right; }
+table.data tr.base td { color: var(--ink-2); }
+table.data tr.tot td { font-weight: 600; border-top: 1px solid var(--axis); }
+.save { color: var(--save-ink); font-weight: 500; }
+.cost { color: var(--cost-ink); font-weight: 500; }
+.flat { color: var(--muted); }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+code, pre { font-family: var(--mono); font-size: 12.5px; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; margin: 0; line-height: 1.5; }
+.note { font-size: 13.5px; color: var(--ink-2); }
+.finding { display: grid; grid-template-columns: 6.5em 1fr; gap: 4px 16px; padding: 12px 0; border-top: 1px solid var(--hair); }
+.finding:first-of-type { border-top: 0; }
+.finding .k { font: 600 20px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.finding .k.save { color: var(--save-ink); }
+.finding .k.cost { color: var(--cost-ink); }
+.finding h3 { margin: 0; font-size: 16px; }
+.finding p { color: var(--ink-2); font-size: 14px; margin-top: 2px; }
+.reco { display: grid; gap: 0; }
+.reco .item { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 14px 0; border-top: 1px solid var(--hair); }
+.reco .item:first-child { border-top: 0; }
+.pill { display: inline-block; font: 500 11px/1.6 var(--mono); padding: 0 8px; border-radius: 999px; border: 1px solid var(--axis); color: var(--ink-2); margin-left: 8px; vertical-align: 2px; }
+.pill.free { border-color: var(--save); color: var(--save-ink); }
+.pill.trade { border-color: var(--c4); color: var(--ink-2); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+#tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--ground); font: 12px/1.4 var(--mono); padding: 6px 9px; border-radius: 5px; max-width: 320px; z-index: 10; }
+footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--hair); font-size: 13px; color: var(--muted); }
+@media (max-width: 560px) { .finding { grid-template-columns: 1fr; } .wrap { padding-inline: 16px; } }
+@media (prefers-reduced-motion: no-preference) { .chart [data-tip] { transition: opacity .12s; } }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">Perceptron rover · Nav2 Humble · DWB · live tests on 23 Sep 2026</span>
+  <h1>Where the rover’s CPU goes</h1>
+  <p class="lede">Your current navigation command keeps 4.2 of this laptop’s 8 threads busy before the robot even moves and
+  4.8 while navigating. Only 0.6 cores of that is navigation itself; the rest runs whether or not the robot
+  moves — RViz, an ArUco node with no camera feed, sensor republishing at 100 Hz, lifecycle heartbeats. Headless on the Jetson
+  Nano the same stack needs 2.7 of 4 cores and still misses control deadlines; optimised, it needs
+  0.52.</p>
+  <div class="rig"><span><b>Laptop</b> i5-8365U 4C/8T · WSL2 · 4.8 GB</span><span><b>Edge</b> Jetson Nano 4 GB · A57 ×4 · MAXN</span>
+  <span><b>Stack</b> ROS 2 Humble · Fast DDS · DWB + Smac2D</span><span><b>Robot</b> parked, motors disconnected from Nav2</span></div>
+  <div class="tiles"><div class="tile"><div class="tl">Laptop, your command, navigating</div><div class="tv">4.8<small> cores</small></div><div class="ts">of 8 threads · idle 4.2 · ±0.22 run-to-run</div></div><div class="tile"><div class="tl">Laptop, optimised, navigating</div><div class="tv">0.96<small> cores</small></div><div class="ts">80% less · idle 0.89</div></div><div class="tile"><div class="tl">Jetson Nano, measured on device</div><div class="tv">2.74 → 0.52<small> cores</small></div><div class="ts">stock → optimised, navigating, of 4 A57 cores</div></div><div class="tile"><div class="tl">Memory (PSS, all nodes)</div><div class="tv">718 → 293<small> MB</small></div><div class="ts">laptop, your command → optimised</div></div></div>
+</header>
+
+<section id="budget">
+  <header><span class="eyebrow">Cores busy · 1.00 = one CPU fully used</span><h2>The answer in one table</h2></header>
+  <div class="tscroll"><table class="data"><thead><tr><th>Where</th><th class="n">Idle, localised</th><th class="n">Navigating</th><th class="n">Out of</th><th class="n">Controller Hz achieved / target</th><th class="n">Memory PSS MB</th><th>Source</th></tr></thead><tbody><tr><td>Laptop · your command</td><td class="n">4.17</td><td class="n">4.79</td><td class="n">of 8 threads</td><td class="n">20.1 / 20</td><td class="n">718</td><td class="">measured</td></tr><tr><td>Laptop · optimised</td><td class="n">0.89</td><td class="n">0.96</td><td class="n">of 8 threads</td><td class="n">10.0 / 10</td><td class="n">293</td><td class="">measured</td></tr><tr><td>Jetson Nano · stock*</td><td class="n">2.12</td><td class="n">2.74</td><td class="n">board 3.24 of 4</td><td class="n">17.3 / 20</td><td class="n">483</td><td class="">measured on device</td></tr><tr><td>Jetson Nano · optimised</td><td class="n">0.37</td><td class="n">0.52</td><td class="n">board 0.99 of 4</td><td class="n">10.0 / 10</td><td class="n">354</td><td class="">measured on device</td></tr><tr><td>Raspberry Pi 5 · stock</td><td class="n">0.61–0.85</td><td class="n">0.78–1.09</td><td class="n">of 4 cores</td><td class="n">–</td><td class="n">≈ same as Nano</td><td class="muted">estimate</td></tr><tr><td>Raspberry Pi 5 · optimised</td><td class="n">0.11–0.15</td><td class="n">0.15–0.21</td><td class="n">of 4 cores</td><td class="n">–</td><td class="n">≈ same as Nano</td><td class="muted">estimate</td></tr></tbody></table></div>
+  <p class="note">Laptop figures are the ROS processes started by the launch (RViz included where on). Nano “board” is every
+  process on the Nano. Pi 5 rows are estimates derived from the Nano measurements (see below). Controller target is 20 Hz in your
+  config and 10 Hz in the optimised one.</p>
+</section>
+
+<section id="where">
+  <header><span class="eyebrow">Laptop · mean of 23 baseline runs of your command · % of one thread</span>
+  <h2>Where the CPU goes today</h2>
+  <p>87% of the navigating load is already there while the robot sits localised and idle. The biggest single
+  items are not planning or control: RViz, the Python bridge, the ArUco localizer and battery_node together are
+  2.15 cores.</p></header>
+  <div class="panel"><div class="legend"><span><i class="sw" style="background:var(--m-idle)"></i>idle, localised</span><span><i class="sw" style="background:var(--m-nav)"></i>navigating (goal active, DWB at 20 Hz)</span></div>
+  <svg viewBox="0 0 760 630" class="chart" role="img" aria-label="CPU per node">
+<line x1="196.0" x2="196.0" y1="18" y2="606" class="grid"/>
+<text x="196.0" y="623" class="tick" text-anchor="middle">0%</text>
+<line x1="259.2" x2="259.2" y1="18" y2="606" class="grid"/>
+<text x="259.2" y="623" class="tick" text-anchor="middle">10%</text>
+<line x1="322.5" x2="322.5" y1="18" y2="606" class="grid"/>
+<text x="322.5" y="623" class="tick" text-anchor="middle">20%</text>
+<line x1="385.8" x2="385.8" y1="18" y2="606" class="grid"/>
+<text x="385.8" y="623" class="tick" text-anchor="middle">30%</text>
+<line x1="449.0" x2="449.0" y1="18" y2="606" class="grid"/>
+<text x="449.0" y="623" class="tick" text-anchor="middle">40%</text>
+<line x1="512.2" x2="512.2" y1="18" y2="606" class="grid"/>
+<text x="512.2" y="623" class="tick" text-anchor="middle">50%</text>
+<line x1="575.5" x2="575.5" y1="18" y2="606" class="grid"/>
+<text x="575.5" y="623" class="tick" text-anchor="middle">60%</text>
+<line x1="638.8" x2="638.8" y1="18" y2="606" class="grid"/>
+<text x="638.8" y="623" class="tick" text-anchor="middle">70%</text>
+<line x1="702.0" x2="702.0" y1="18" y2="606" class="grid"/>
+<text x="702.0" y="623" class="tick" text-anchor="middle">80%</text>
+<text x="186" y="40" class="lbl" text-anchor="end">controller_server</text>
+<path d="M196,28 h146.5 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-146.5 z" class="m-idle" data-tip="controller_server · idle: 23.8% of one laptop thread"/>
+<path d="M196,40 h446.5 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-446.5 z" class="m-nav" data-tip="controller_server · navigating: 71.2% of one laptop thread"/>
+<text x="652.5" y="48" class="val">71%</text>
+<text x="186" y="72" class="lbl" text-anchor="end">RViz</text>
+<path d="M196,60 h409.0 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-409.0 z" class="m-idle" data-tip="RViz · idle: 65.3% of one laptop thread"/>
+<path d="M196,72 h420.4 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-420.4 z" class="m-nav" data-tip="RViz · navigating: 67.1% of one laptop thread"/>
+<text x="626.4" y="80" class="val">67%</text>
+<text x="186" y="104" class="lbl" text-anchor="end">ArUco localizer</text>
+<path d="M196,92 h375.4 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-375.4 z" class="m-idle" data-tip="ArUco localizer · idle: 60.0% of one laptop thread"/>
+<path d="M196,104 h367.1 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-367.1 z" class="m-nav" data-tip="ArUco localizer · navigating: 58.7% of one laptop thread"/>
+<text x="573.1" y="112" class="val">59%</text>
+<text x="186" y="136" class="lbl" text-anchor="end">Jetson bridge (ROS)</text>
+<path d="M196,124 h370.1 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-370.1 z" class="m-idle" data-tip="Jetson bridge (ROS) · idle: 59.1% of one laptop thread"/>
+<path d="M196,136 h361.2 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-361.2 z" class="m-nav" data-tip="Jetson bridge (ROS) · navigating: 57.7% of one laptop thread"/>
+<text x="567.2" y="144" class="val">58%</text>
+<text x="186" y="168" class="lbl" text-anchor="end">battery_node</text>
+<path d="M196,156 h194.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-194.8 z" class="m-idle" data-tip="battery_node · idle: 31.4% of one laptop thread"/>
+<path d="M196,168 h192.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-192.8 z" class="m-nav" data-tip="battery_node · navigating: 31.1% of one laptop thread"/>
+<text x="398.8" y="176" class="val">31%</text>
+<text x="186" y="200" class="lbl" text-anchor="end">bt_navigator</text>
+<path d="M196,188 h144.3 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-144.3 z" class="m-idle" data-tip="bt_navigator · idle: 23.4% of one laptop thread"/>
+<path d="M196,200 h185.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-185.8 z" class="m-nav" data-tip="bt_navigator · navigating: 30.0% of one laptop thread"/>
+<text x="391.8" y="208" class="val">30%</text>
+<text x="186" y="232" class="lbl" text-anchor="end">AMCL</text>
+<path d="M196,220 h114.6 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-114.6 z" class="m-idle" data-tip="AMCL · idle: 18.7% of one laptop thread"/>
+<path d="M196,232 h163.9 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-163.9 z" class="m-nav" data-tip="AMCL · navigating: 26.5% of one laptop thread"/>
+<text x="369.9" y="240" class="val">27%</text>
+<text x="186" y="264" class="lbl" text-anchor="end">lifecycle mgr (nav)</text>
+<path d="M196,252 h151.1 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-151.1 z" class="m-idle" data-tip="lifecycle mgr (nav) · idle: 24.5% of one laptop thread"/>
+<path d="M196,264 h144.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-144.8 z" class="m-nav" data-tip="lifecycle mgr (nav) · navigating: 23.5% of one laptop thread"/>
+<text x="350.8" y="272" class="val">24%</text>
+<text x="186" y="296" class="lbl" text-anchor="end">planner_server</text>
+<path d="M196,284 h121.2 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-121.2 z" class="m-idle" data-tip="planner_server · idle: 19.8% of one laptop thread"/>
+<path d="M196,296 h120.3 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-120.3 z" class="m-nav" data-tip="planner_server · navigating: 19.7% of one laptop thread"/>
+<text x="326.3" y="304" class="val">20%</text>
+<text x="186" y="328" class="lbl" text-anchor="end">behavior_server</text>
+<path d="M196,316 h122.6 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-122.6 z" class="m-idle" data-tip="behavior_server · idle: 20.0% of one laptop thread"/>
+<path d="M196,328 h119.3 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-119.3 z" class="m-nav" data-tip="behavior_server · navigating: 19.5% of one laptop thread"/>
+<text x="325.3" y="336" class="val">19%</text>
+<text x="186" y="360" class="lbl" text-anchor="end">smoother_server</text>
+<path d="M196,348 h101.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-101.8 z" class="m-idle" data-tip="smoother_server · idle: 16.7% of one laptop thread"/>
+<path d="M196,360 h98.7 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-98.7 z" class="m-nav" data-tip="smoother_server · navigating: 16.2% of one laptop thread"/>
+<text x="304.7" y="368" class="val">16%</text>
+<text x="186" y="392" class="lbl" text-anchor="end">velocity_smoother</text>
+<path d="M196,380 h68.9 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-68.9 z" class="m-idle" data-tip="velocity_smoother · idle: 11.5% of one laptop thread"/>
+<path d="M196,392 h80.1 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-80.1 z" class="m-nav" data-tip="velocity_smoother · navigating: 13.3% of one laptop thread"/>
+<text x="286.1" y="400" class="val">13%</text>
+<text x="186" y="424" class="lbl" text-anchor="end">lifecycle mgr (loc)</text>
+<path d="M196,412 h83.4 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-83.4 z" class="m-idle" data-tip="lifecycle mgr (loc) · idle: 13.8% of one laptop thread"/>
+<path d="M196,424 h79.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-79.8 z" class="m-nav" data-tip="lifecycle mgr (loc) · navigating: 13.2% of one laptop thread"/>
+<text x="285.8" y="432" class="val">13%</text>
+<text x="186" y="456" class="lbl" text-anchor="end">waypoint_follower</text>
+<path d="M196,444 h69.5 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-69.5 z" class="m-idle" data-tip="waypoint_follower · idle: 11.6% of one laptop thread"/>
+<path d="M196,456 h72.7 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-72.7 z" class="m-nav" data-tip="waypoint_follower · navigating: 12.1% of one laptop thread"/>
+<text x="278.7" y="464" class="val">12%</text>
+<text x="186" y="488" class="lbl" text-anchor="end">map_server</text>
+<path d="M196,476 h72.7 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-72.7 z" class="m-idle" data-tip="map_server · idle: 12.1% of one laptop thread"/>
+<path d="M196,488 h69.6 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-69.6 z" class="m-nav" data-tip="map_server · navigating: 11.6% of one laptop thread"/>
+<text x="275.6" y="496" class="val">12%</text>
+<text x="186" y="520" class="lbl" text-anchor="end">joint_state_publisher</text>
+<path d="M196,508 h18.2 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-18.2 z" class="m-idle" data-tip="joint_state_publisher · idle: 3.5% of one laptop thread"/>
+<path d="M196,520 h18.2 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-18.2 z" class="m-nav" data-tip="joint_state_publisher · navigating: 3.5% of one laptop thread"/>
+<text x="224.2" y="528" class="val">4%</text>
+<text x="186" y="552" class="lbl" text-anchor="end">ros2 launch</text>
+<path d="M196,540 h0.8 a0.75,0.75 0 0 1 0.75,0.75 v8.5 a0.75,0.75 0 0 1 -0.75,0.75 h-0.8 z" class="m-idle" data-tip="ros2 launch · idle: 0.0% of one laptop thread"/>
+<path d="M196,552 h7.7 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-7.7 z" class="m-nav" data-tip="ros2 launch · navigating: 1.9% of one laptop thread"/>
+<text x="213.7" y="560" class="val">2%</text>
+<text x="186" y="584" class="lbl" text-anchor="end">robot_state_publisher</text>
+<path d="M196,572 h6.1 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-6.1 z" class="m-idle" data-tip="robot_state_publisher · idle: 1.6% of one laptop thread"/>
+<path d="M196,584 h5.8 a4,4 0 0 1 4,4 v2.0 a4,4 0 0 1 -4,4 h-5.8 z" class="m-nav" data-tip="robot_state_publisher · navigating: 1.5% of one laptop thread"/>
+<text x="211.8" y="592" class="val">2%</text>
+</svg></div>
+  <h3>The same load, grouped, against the whole machine</h3>
+  <div class="panel"><svg viewBox="0 0 760 256" class="chart" role="img" aria-label="CPU budget by node family">
+<line x1="232.0" x2="232.0" y1="10" y2="230" class="grid"/>
+<text x="232.0" y="248" class="tick" text-anchor="middle">0</text>
+<line x1="291.0" x2="291.0" y1="10" y2="230" class="grid"/>
+<text x="291.0" y="248" class="tick" text-anchor="middle">1</text>
+<line x1="350.0" x2="350.0" y1="10" y2="230" class="grid"/>
+<text x="350.0" y="248" class="tick" text-anchor="middle">2</text>
+<line x1="409.0" x2="409.0" y1="10" y2="230" class="grid"/>
+<text x="409.0" y="248" class="tick" text-anchor="middle">3</text>
+<line x1="468.0" x2="468.0" y1="10" y2="230" class="grid"/>
+<text x="468.0" y="248" class="tick" text-anchor="middle">4</text>
+<line x1="527.0" x2="527.0" y1="10" y2="230" class="grid"/>
+<text x="527.0" y="248" class="tick" text-anchor="middle">5</text>
+<line x1="586.0" x2="586.0" y1="10" y2="230" class="grid"/>
+<text x="586.0" y="248" class="tick" text-anchor="middle">6</text>
+<line x1="645.0" x2="645.0" y1="10" y2="230" class="grid"/>
+<text x="645.0" y="248" class="tick" text-anchor="middle">7</text>
+<line x1="704.0" x2="704.0" y1="10" y2="230" class="grid"/>
+<text x="704.0" y="248" class="tick" text-anchor="middle">8</text>
+<text x="220" y="32" class="lbl" text-anchor="end">Your command (baseline mean)</text>
+<rect x="232.0" y="16" width="37.6" height="22" rx="2" style="fill:var(--c1)" data-tip="Your command (baseline mean) · RViz: 0.67 cores"/>
+<rect x="271.6" y="16" width="87.1" height="22" rx="2" style="fill:var(--c2)" data-tip="Your command (baseline mean) · Python nodes (bridge, battery, ArUco, joints): 1.51 cores"/>
+<rect x="360.7" y="16" width="119.3" height="22" rx="2" style="fill:var(--c3)" data-tip="Your command (baseline mean) · Nav2 servers: 2.06 cores"/>
+<rect x="482.0" y="16" width="28.3" height="22" rx="2" style="fill:var(--c4)" data-tip="Your command (baseline mean) · Localisation (AMCL, map, EKF): 0.51 cores"/>
+<rect x="512.3" y="16" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="Your command (baseline mean) · Other: 0.03 cores"/>
+<text x="520.3" y="32" class="val">4.79</text>
+<text x="220" y="74" class="lbl" text-anchor="end">rviz:=false only</text>
+<rect x="232.0" y="58" width="43.9" height="22" rx="2" style="fill:var(--c2)" data-tip="rviz:=false only · Python nodes (bridge, battery, ArUco, joints): 0.78 cores"/>
+<rect x="277.9" y="58" width="65.6" height="22" rx="2" style="fill:var(--c3)" data-tip="rviz:=false only · Nav2 servers: 1.15 cores"/>
+<rect x="345.6" y="58" width="15.7" height="22" rx="2" style="fill:var(--c4)" data-tip="rviz:=false only · Localisation (AMCL, map, EKF): 0.30 cores"/>
+<rect x="363.3" y="58" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="rviz:=false only · Other: 0.02 cores"/>
+<text x="370.2" y="74" class="val">2.24</text>
+<text x="220" y="116" class="lbl" text-anchor="end">Behaviour-neutral bundle</text>
+<rect x="232.0" y="100" width="30.6" height="22" rx="2" style="fill:var(--c2)" data-tip="Behaviour-neutral bundle · Python nodes (bridge, battery, ArUco, joints): 0.55 cores"/>
+<rect x="264.6" y="100" width="73.5" height="22" rx="2" style="fill:var(--c3)" data-tip="Behaviour-neutral bundle · Nav2 servers: 1.28 cores"/>
+<rect x="340.1" y="100" width="18.4" height="22" rx="2" style="fill:var(--c4)" data-tip="Behaviour-neutral bundle · Localisation (AMCL, map, EKF): 0.35 cores"/>
+<rect x="360.5" y="100" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="Behaviour-neutral bundle · Other: 0.02 cores"/>
+<text x="367.6" y="116" class="val">2.20</text>
+<text x="220" y="158" class="lbl" text-anchor="end">Full bundle</text>
+<rect x="232.0" y="142" width="28.1" height="22" rx="2" style="fill:var(--c2)" data-tip="Full bundle · Python nodes (bridge, battery, ArUco, joints): 0.51 cores"/>
+<rect x="262.1" y="142" width="30.7" height="22" rx="2" style="fill:var(--c3)" data-tip="Full bundle · Nav2 servers: 0.55 cores"/>
+<rect x="294.8" y="142" width="6.8" height="22" rx="2" style="fill:var(--c4)" data-tip="Full bundle · Localisation (AMCL, map, EKF): 0.15 cores"/>
+<rect x="303.5" y="142" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="Full bundle · Other: 0.02 cores"/>
+<text x="310.7" y="158" class="val">1.23</text>
+<text x="220" y="200" class="lbl" text-anchor="end">Full bundle + lean bridge</text>
+<rect x="232.0" y="184" width="10.4" height="22" rx="2" style="fill:var(--c2)" data-tip="Full bundle + lean bridge · Python nodes (bridge, battery, ArUco, joints): 0.21 cores"/>
+<rect x="244.4" y="184" width="32.5" height="22" rx="2" style="fill:var(--c3)" data-tip="Full bundle + lean bridge · Nav2 servers: 0.59 cores"/>
+<rect x="278.9" y="184" width="6.6" height="22" rx="2" style="fill:var(--c4)" data-tip="Full bundle + lean bridge · Localisation (AMCL, map, EKF): 0.15 cores"/>
+<rect x="287.6" y="184" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="Full bundle + lean bridge · Other: 0.02 cores"/>
+<text x="294.9" y="200" class="val">0.96</text>
+</svg><div class="legend"><span><i class="sw" style="background:var(--c1)"></i>RViz</span><span><i class="sw" style="background:var(--c2)"></i>Python nodes (bridge, battery, ArUco, joints)</span><span><i class="sw" style="background:var(--c3)"></i>Nav2 servers</span><span><i class="sw" style="background:var(--c4)"></i>Localisation (AMCL, map, EKF)</span><span><i class="sw" style="background:var(--c5)"></i>Other</span></div></div>
+  <div class="tscroll"><table class="data"><thead><tr><th>Node</th><th class="n">Idle % of 1 laptop thread</th><th class="n">Navigating %</th><th class="n">PSS MB</th></tr></thead><tbody>
+<tr><td>controller_server</td><td class="n">23.8</td><td class="n">71.2</td><td class="n">27</td></tr>
+<tr><td>RViz</td><td class="n">65.3</td><td class="n">67.1</td><td class="n">235</td></tr>
+<tr><td>ArUco localizer</td><td class="n">60.0</td><td class="n">58.7</td><td class="n">123</td></tr>
+<tr><td>Jetson bridge (ROS)</td><td class="n">59.1</td><td class="n">57.7</td><td class="n">41</td></tr>
+<tr><td>battery_node</td><td class="n">31.4</td><td class="n">31.1</td><td class="n">35</td></tr>
+<tr><td>bt_navigator</td><td class="n">23.4</td><td class="n">30.0</td><td class="n">29</td></tr>
+<tr><td>AMCL</td><td class="n">18.7</td><td class="n">26.5</td><td class="n">18</td></tr>
+<tr><td>lifecycle mgr (nav)</td><td class="n">24.5</td><td class="n">23.5</td><td class="n">14</td></tr>
+<tr><td>planner_server</td><td class="n">19.8</td><td class="n">19.7</td><td class="n">34</td></tr>
+<tr><td>behavior_server</td><td class="n">20.0</td><td class="n">19.5</td><td class="n">18</td></tr>
+<tr><td>smoother_server</td><td class="n">16.7</td><td class="n">16.2</td><td class="n">18</td></tr>
+<tr><td>velocity_smoother</td><td class="n">11.5</td><td class="n">13.3</td><td class="n">12</td></tr>
+<tr><td>lifecycle mgr (loc)</td><td class="n">13.8</td><td class="n">13.2</td><td class="n">12</td></tr>
+<tr><td>waypoint_follower</td><td class="n">11.6</td><td class="n">12.1</td><td class="n">13</td></tr>
+<tr><td>map_server</td><td class="n">12.1</td><td class="n">11.6</td><td class="n">17</td></tr>
+<tr><td>joint_state_publisher</td><td class="n">3.5</td><td class="n">3.5</td><td class="n">36</td></tr>
+<tr><td>ros2 launch</td><td class="n">0.0</td><td class="n">1.9</td><td class="n">27</td></tr>
+<tr><td>robot_state_publisher</td><td class="n">1.6</td><td class="n">1.5</td><td class="n">13</td></tr>
+<tr class="tot"><td>Total</td><td class="n">417</td><td class="n">479</td><td class="n">724</td></tr></tbody></table></div>
+</section>
+
+<section id="why">
+  <header><span class="eyebrow">Measured with a raw-subscriber audit and per-thread /proc sampling</span>
+  <h2>Why a parked robot uses 4.2 cores</h2>
+  <p>Almost all of it is wake-ups. Every message delivered to a node wakes a DDS thread and an executor; at these rates that
+  per-message overhead, not any algorithm, is the bill. map_server — which does nothing after sending the map — costs
+  12% of a thread purely from receiving other nodes’ bond heartbeats.</p></header>
+  <div class="tscroll"><table class="data"><thead><tr><th>Stream</th><th class="n">Rate Hz</th><th class="n">Subscribers</th><th class="n">Deliveries / s</th><th>Who actually needs it</th></tr></thead><tbody>
+<tr><td class="mono">/bond</td><td class="n">102</td><td class="n">11</td><td class="n">1121</td><td>Nav2 lifecycle heartbeats (10 Hz per bond, both ends, one shared topic). Crash detection only.</td></tr>
+<tr><td class="mono">/tf</td><td class="n">102</td><td class="n">8</td><td class="n">814</td><td>Odom TF at the STM32 rate (92–100 Hz). Nav2 interpolates; 30–50 Hz is plenty.</td></tr>
+<tr><td class="mono">/odom</td><td class="n">92</td><td class="n">2</td><td class="n">184</td><td>controller_server + aruco_localizer_node. 50 Hz is plenty for DWB and the EKF.</td></tr>
+<tr><td class="mono">/imu/data_raw</td><td class="n">92</td><td class="n">0</td><td class="n">92</td><td>Nobody while ekf:=false — still fully conditioned in Python.</td></tr>
+<tr><td class="mono">/battery/measured_voltage</td><td class="n">92</td><td class="n">1</td><td class="n">92</td><td>battery_node only. A 1–2 Hz value.</td></tr>
+<tr><td class="mono">/battery/measured_current</td><td class="n">92</td><td class="n">1</td><td class="n">92</td><td>battery_node only. A 1–2 Hz value.</td></tr>
+<tr><td class="mono">ZMQ &quot;reply&quot; (not ROS)</td><td class="n">195</td><td class="n">1</td><td class="n">195</td><td>Raw copy of every 0x55/0x56 frame, sent over Wi-Fi and discarded by jetson_bridge_node.</td></tr>
+<tr><td class="mono">/joint_states</td><td class="n">11</td><td class="n">1</td><td class="n">11</td><td>robot_state_publisher. Wheels are cosmetic here; cheap.</td></tr>
+<tr><td class="mono">/scan</td><td class="n">10</td><td class="n">4</td><td class="n">39</td><td>AMCL + both costmaps (+ RViz). Needed.</td></tr>
+</tbody></table></div>
+</section>
+
+
+<section id="switches">
+  <header><span class="eyebrow">Laptop · each change vs the baselines run just before and after it</span>
+  <h2>What each switch does</h2>
+  <p class="note">Hollow dot = idle and localised, filled = navigating. Grey band = run-to-run noise (±0.47 cores).
+  Every change was run once and compared with a baseline interpolated from the runs either side of it, because this
+  laptop drifted by up to 20% over an hour as it heated up. On this laptop the price of a unit of work also depends on how busy the machine is (turbo clock, hyper-threading, WSL2 scheduling): in the behaviour-neutral bundle, nodes doing exactly the same work as before — map_server, the lifecycle managers, battery_node, AMCL — cost 24–32% less, and a fixed benchmark running alongside sped up by the same amount. So every saving below includes the remaining nodes getting faster cores; the Jetson Nano section measures the edge directly.</p></header>
+  <h3 id="h-l">Launch switches and the bridge</h3>
+  <div class="legend"><span><i class="sw ring"></i>idle</span><span><i class="sw dot"></i>navigating</span></div>
+  <div class="panel"><svg viewBox="0 0 760 344" class="chart" role="img" aria-label="Change in cores vs bracketing baseline">
+<rect x="543.2" y="30" width="122.2" height="280" class="band" data-tip="Noise band ±0.47 cores: 2 × single-run sd from back-to-back baselines"/>
+<line x1="280.0" x2="280.0" y1="30" y2="310" class="grid"/>
+<text x="280.0" y="328" class="tick" text-anchor="middle">-2.5</text>
+<line x1="344.9" x2="344.9" y1="30" y2="310" class="grid"/>
+<text x="344.9" y="328" class="tick" text-anchor="middle">-2.0</text>
+<line x1="409.7" x2="409.7" y1="30" y2="310" class="grid"/>
+<text x="409.7" y="328" class="tick" text-anchor="middle">-1.5</text>
+<line x1="474.6" x2="474.6" y1="30" y2="310" class="grid"/>
+<text x="474.6" y="328" class="tick" text-anchor="middle">-1.0</text>
+<line x1="539.4" x2="539.4" y1="30" y2="310" class="grid"/>
+<text x="539.4" y="328" class="tick" text-anchor="middle">-0.5</text>
+<line x1="604.3" x2="604.3" y1="30" y2="310" class="axis0"/>
+<text x="604.3" y="328" class="tick" text-anchor="middle">+0.0</text>
+<line x1="669.1" x2="669.1" y1="30" y2="310" class="grid"/>
+<text x="669.1" y="328" class="tick" text-anchor="middle">+0.5</text>
+<line x1="734.0" x2="734.0" y1="30" y2="310" class="grid"/>
+<text x="734.0" y="328" class="tick" text-anchor="middle">+1.0</text>
+<text x="282.0" y="21" class="axn">← saves CPU (cores)</text>
+<text x="732.0" y="21" class="axn" text-anchor="end">costs CPU →</text>
+<text x="268" y="46" class="lbl" text-anchor="end">rviz:=false</text>
+<line x1="384.9" x2="302.6" y1="42" y2="42" class="conn"/>
+<circle cx="384.9" cy="42" r="5" class="d-idle" data-tip="rviz:=false · idle -1.69 cores (-42%)"/>
+<circle cx="302.6" cy="42" r="5" class="d-nav" data-tip="rviz:=false · navigating -2.33 cores (-51%), controller 20.0 Hz"/>
+<text x="268" y="76" class="lbl" text-anchor="end">aruco:=false</text>
+<line x1="513.8" x2="516.1" y1="72" y2="72" class="conn"/>
+<circle cx="513.8" cy="72" r="5" class="d-idle" data-tip="aruco:=false · idle -0.70 cores (-18%)"/>
+<circle cx="516.1" cy="72" r="5" class="d-nav" data-tip="aruco:=false · navigating -0.68 cores (-15%), controller 20.1 Hz"/>
+<text x="268" y="106" class="lbl" text-anchor="end">stm32:=false (no battery_node)</text>
+<line x1="552.2" x2="545.9" y1="102" y2="102" class="conn"/>
+<circle cx="552.2" cy="102" r="5" class="d-idle" data-tip="stm32:=false (no battery_node) · idle -0.40 cores (-10%)"/>
+<circle cx="545.9" cy="102" r="5" class="d-nav" data-tip="stm32:=false (no battery_node) · navigating -0.45 cores (-10%), controller 20.1 Hz"/>
+<text x="268" y="136" class="lbl" text-anchor="end">ekf:=true</text>
+<line x1="574.6" x2="571.4" y1="132" y2="132" class="conn"/>
+<circle cx="574.6" cy="132" r="5" class="d-idle" data-tip="ekf:=true · idle -0.23 cores (-6%)"/>
+<circle cx="571.4" cy="132" r="5" class="d-nav" data-tip="ekf:=true · navigating -0.25 cores (-6%), controller 16.7 Hz"/>
+<text x="268" y="166" class="lbl" text-anchor="end">Nav2 lifecycle bonds off</text>
+<line x1="440.2" x2="464.2" y1="162" y2="162" class="conn"/>
+<circle cx="440.2" cy="162" r="5" class="d-idle" data-tip="Nav2 lifecycle bonds off · idle -1.26 cores (-33%)"/>
+<circle cx="464.2" cy="162" r="5" class="d-nav" data-tip="Nav2 lifecycle bonds off · navigating -1.08 cores (-24%), controller 20.1 Hz"/>
+<text x="268" y="196" class="lbl" text-anchor="end">Lean jetson_bridge_node (code)</text>
+<line x1="473.7" x2="488.3" y1="192" y2="192" class="conn"/>
+<circle cx="473.7" cy="192" r="5" class="d-idle" data-tip="Lean jetson_bridge_node (code) · idle -1.01 cores (-26%)"/>
+<circle cx="488.3" cy="192" r="5" class="d-nav" data-tip="Lean jetson_bridge_node (code) · navigating -0.89 cores (-20%), controller 20.2 Hz"/>
+<text x="268" y="226" class="lbl" text-anchor="end">Nav2 composition (1 process)</text>
+<line x1="549.1" x2="620.9" y1="222" y2="222" class="conn"/>
+<circle cx="549.1" cy="222" r="5" class="d-idle" data-tip="Nav2 composition (1 process) · idle -0.43 cores (-11%)"/>
+<circle cx="620.9" cy="222" r="5" class="d-nav" data-tip="Nav2 composition (1 process) · navigating +0.13 cores (+3%), controller 20.1 Hz"/>
+<text x="268" y="256" class="lbl" text-anchor="end">nav_profile:=mppi</text>
+<line x1="598.1" x2="584.8" y1="252" y2="252" class="conn"/>
+<circle cx="598.1" cy="252" r="5" class="d-idle" data-tip="nav_profile:=mppi · idle -0.05 cores (-1%)"/>
+<circle cx="584.8" cy="252" r="5" class="d-nav" data-tip="nav_profile:=mppi · navigating -0.15 cores (-3%), controller 20.1 Hz"/>
+<text x="268" y="286" class="lbl" text-anchor="end">overlay:=true</text>
+<line x1="644.0" x2="647.8" y1="282" y2="282" class="conn"/>
+<circle cx="644.0" cy="282" r="5" class="d-idle" data-tip="overlay:=true · idle +0.31 cores (+7%)"/>
+<circle cx="647.8" cy="282" r="5" class="d-nav" data-tip="overlay:=true · navigating +0.34 cores (+7%), controller 20.2 Hz"/>
+</svg></div>
+  <h3>Nav2 parameters: controller, costmaps, plugins, AMCL</h3>
+  <div class="panel"><svg viewBox="0 0 760 464" class="chart" role="img" aria-label="Change in cores vs bracketing baseline">
+<rect x="400.1" y="30" width="213.8" height="400" class="band" data-tip="Noise band ±0.47 cores: 2 × single-run sd from back-to-back baselines"/>
+<line x1="280.0" x2="280.0" y1="30" y2="430" class="grid"/>
+<text x="280.0" y="448" class="tick" text-anchor="middle">-1.0</text>
+<line x1="393.5" x2="393.5" y1="30" y2="430" class="grid"/>
+<text x="393.5" y="448" class="tick" text-anchor="middle">-0.5</text>
+<line x1="507.0" x2="507.0" y1="30" y2="430" class="axis0"/>
+<text x="507.0" y="448" class="tick" text-anchor="middle">+0.0</text>
+<line x1="620.5" x2="620.5" y1="30" y2="430" class="grid"/>
+<text x="620.5" y="448" class="tick" text-anchor="middle">+0.5</text>
+<line x1="734.0" x2="734.0" y1="30" y2="430" class="grid"/>
+<text x="734.0" y="448" class="tick" text-anchor="middle">+1.0</text>
+<text x="282.0" y="21" class="axn">← saves CPU (cores)</text>
+<text x="732.0" y="21" class="axn" text-anchor="end">costs CPU →</text>
+<text x="268" y="46" class="lbl" text-anchor="end">DWB debug publishers off</text>
+<line x1="434.0" x2="420.1" y1="42" y2="42" class="conn"/>
+<circle cx="434.0" cy="42" r="5" class="d-idle" data-tip="DWB debug publishers off · idle -0.32 cores (-8%)"/>
+<circle cx="420.1" cy="42" r="5" class="d-nav" data-tip="DWB debug publishers off · navigating -0.38 cores (-9%), controller 20.1 Hz"/>
+<text x="268" y="76" class="lbl" text-anchor="end">controller 20 → 10 Hz</text>
+<line x1="510.5" x2="459.9" y1="72" y2="72" class="conn"/>
+<circle cx="510.5" cy="72" r="5" class="d-idle" data-tip="controller 20 → 10 Hz · idle +0.02 cores (+0%)"/>
+<circle cx="459.9" cy="72" r="5" class="d-nav" data-tip="controller 20 → 10 Hz · navigating -0.21 cores (-5%), controller 10.1 Hz"/>
+<text x="268" y="106" class="lbl" text-anchor="end">DWB samples 20×40 → 10×20</text>
+<line x1="416.7" x2="299.1" y1="102" y2="102" class="conn"/>
+<circle cx="416.7" cy="102" r="5" class="d-idle" data-tip="DWB samples 20×40 → 10×20 · idle -0.40 cores (-9%)"/>
+<circle cx="299.1" cy="102" r="5" class="d-nav" data-tip="DWB samples 20×40 → 10×20 · navigating -0.92 cores (-18%), controller 20.0 Hz"/>
+<text x="268" y="136" class="lbl" text-anchor="end">10 Hz + fewer samples + coarser steps</text>
+<line x1="539.1" x2="478.2" y1="132" y2="132" class="conn"/>
+<circle cx="539.1" cy="132" r="5" class="d-idle" data-tip="10 Hz + fewer samples + coarser steps · idle +0.14 cores (+4%)"/>
+<circle cx="478.2" cy="132" r="5" class="d-nav" data-tip="10 Hz + fewer samples + coarser steps · navigating -0.13 cores (-3%), controller 10.0 Hz"/>
+<text x="268" y="166" class="lbl" text-anchor="end">Global costmap sized to the map</text>
+<line x1="508.5" x2="510.4" y1="162" y2="162" class="conn"/>
+<circle cx="508.5" cy="162" r="5" class="d-idle" data-tip="Global costmap sized to the map · idle +0.01 cores (+0%)"/>
+<circle cx="510.4" cy="162" r="5" class="d-nav" data-tip="Global costmap sized to the map · navigating +0.01 cores (+0%), controller 20.2 Hz"/>
+<text x="268" y="196" class="lbl" text-anchor="end">Global costmap at 0.10 m</text>
+<line x1="495.6" x2="476.8" y1="192" y2="192" class="conn"/>
+<circle cx="495.6" cy="192" r="5" class="d-idle" data-tip="Global costmap at 0.10 m · idle -0.05 cores (-1%)"/>
+<circle cx="476.8" cy="192" r="5" class="d-nav" data-tip="Global costmap at 0.10 m · navigating -0.13 cores (-3%), controller 8.9 Hz"/>
+<text x="268" y="226" class="lbl" text-anchor="end">Costmap publishing lean</text>
+<line x1="485.0" x2="491.6" y1="222" y2="222" class="conn"/>
+<circle cx="485.0" cy="222" r="5" class="d-idle" data-tip="Costmap publishing lean · idle -0.10 cores (-2%)"/>
+<circle cx="491.6" cy="222" r="5" class="d-nav" data-tip="Costmap publishing lean · navigating -0.07 cores (-1%), controller 20.1 Hz"/>
+<text x="268" y="256" class="lbl" text-anchor="end">Costmap update rates halved</text>
+<line x1="476.2" x2="495.2" y1="252" y2="252" class="conn"/>
+<circle cx="476.2" cy="252" r="5" class="d-idle" data-tip="Costmap update rates halved · idle -0.14 cores (-3%)"/>
+<circle cx="495.2" cy="252" r="5" class="d-nav" data-tip="Costmap update rates halved · navigating -0.05 cores (-1%), controller 20.2 Hz"/>
+<text x="268" y="286" class="lbl" text-anchor="end">Costmaps: map-sized + lean publish</text>
+<line x1="513.6" x2="565.7" y1="282" y2="282" class="conn"/>
+<circle cx="513.6" cy="282" r="5" class="d-idle" data-tip="Costmaps: map-sized + lean publish · idle +0.03 cores (+1%)"/>
+<circle cx="565.7" cy="282" r="5" class="d-nav" data-tip="Costmaps: map-sized + lean publish · navigating +0.26 cores (+5%), controller 19.4 Hz"/>
+<text x="268" y="316" class="lbl" text-anchor="end">Unload unused plugins</text>
+<line x1="483.8" x2="492.6" y1="312" y2="312" class="conn"/>
+<circle cx="483.8" cy="312" r="5" class="d-idle" data-tip="Unload unused plugins · idle -0.10 cores (-2%)"/>
+<circle cx="492.6" cy="312" r="5" class="d-nav" data-tip="Unload unused plugins · navigating -0.06 cores (-1%), controller 20.1 Hz"/>
+<text x="268" y="346" class="lbl" text-anchor="end">AMCL max_beams 240 → 60</text>
+<line x1="504.2" x2="501.0" y1="342" y2="342" class="conn"/>
+<circle cx="504.2" cy="342" r="5" class="d-idle" data-tip="AMCL max_beams 240 → 60 · idle -0.01 cores (-0%)"/>
+<circle cx="501.0" cy="342" r="5" class="d-nav" data-tip="AMCL max_beams 240 → 60 · navigating -0.03 cores (-1%), controller 20.2 Hz"/>
+<text x="268" y="376" class="lbl" text-anchor="end">AMCL particles 500–2000 → 200–800</text>
+<line x1="524.2" x2="517.6" y1="372" y2="372" class="conn"/>
+<circle cx="524.2" cy="372" r="5" class="d-idle" data-tip="AMCL particles 500–2000 → 200–800 · idle +0.08 cores (+2%)"/>
+<circle cx="517.6" cy="372" r="5" class="d-nav" data-tip="AMCL particles 500–2000 → 200–800 · navigating +0.05 cores (+1%), controller 20.2 Hz"/>
+<text x="268" y="406" class="lbl" text-anchor="end">AMCL beams + particles</text>
+<line x1="510.5" x2="490.1" y1="402" y2="402" class="conn"/>
+<circle cx="510.5" cy="402" r="5" class="d-idle" data-tip="AMCL beams + particles · idle +0.02 cores (+0%)"/>
+<circle cx="490.1" cy="402" r="5" class="d-nav" data-tip="AMCL beams + particles · navigating -0.07 cores (-1%), controller 20.2 Hz"/>
+</svg></div>
+  <p class="note">Parameter changes act on one or two nodes, so their effect is clearer on those nodes than on the
+  whole-stack total above:</p>
+  <div class="tscroll"><table class="data"><thead><tr><th>Change</th><th>Node(s) it acts on</th><th class="n">Idle: node % → with change</th><th class="n">Nav: node % → with change</th><th class="n">Nav change</th></tr></thead><tbody>
+<tr><td>DWB debug publishers off</td><td class="muted">controller_server</td><td class="n">22 → 21</td><td class="n">65 → 52</td><td class="n save">-20%</td></tr>
+<tr><td>DWB samples 20×40 → 10×20</td><td class="muted">controller_server</td><td class="n">26 → 24</td><td class="n">78 → 42</td><td class="n save">-46%</td></tr>
+<tr><td>controller_frequency 20 → 10 Hz (MPPI unloaded)</td><td class="muted">controller_server</td><td class="n">22 → 22</td><td class="n">68 → 45</td><td class="n save">-34%</td></tr>
+<tr><td>10 Hz + 10×20 samples + coarser steps (MPPI unloaded)</td><td class="muted">controller_server</td><td class="n">22 → 22</td><td class="n">65 → 32</td><td class="n save">-51%</td></tr>
+<tr><td>nav_profile:=mppi</td><td class="muted">controller_server</td><td class="n">22 → 22</td><td class="n">65 → 37</td><td class="n save">-43%</td></tr>
+<tr><td>Global costmap sized to the map</td><td class="muted">planner_server</td><td class="n">23 → 21</td><td class="n">22 → 21</td><td class="n flat">-5%</td></tr>
+<tr><td>Global costmap at 0.10 m</td><td class="muted">planner_server</td><td class="n">23 → 21</td><td class="n">22 → 20</td><td class="n flat">-9%</td></tr>
+<tr><td>Costmap update rates halved</td><td class="muted">planner_server, controller_server</td><td class="n">48 → 45</td><td class="n">98 → 96</td><td class="n flat">-2%</td></tr>
+<tr><td>Costmaps: map-sized + lean publishing</td><td class="muted">planner_server, controller_server, smoother_server</td><td class="n">65 → 63</td><td class="n">115 → 117</td><td class="n flat">+2%</td></tr>
+<tr><td>AMCL max_beams 240 → 60</td><td class="muted">AMCL</td><td class="n">20 → 19</td><td class="n">27 → 22</td><td class="n save">-20%</td></tr>
+<tr><td>AMCL particles 500–2000 → 200–800</td><td class="muted">AMCL</td><td class="n">20 → 20</td><td class="n">27 → 25</td><td class="n flat">-8%</td></tr>
+<tr><td>AMCL beams + particles</td><td class="muted">AMCL</td><td class="n">20 → 20</td><td class="n">27 → 22</td><td class="n save">-22%</td></tr>
+<tr><td>ekf:=true</td><td class="muted">Jetson bridge (ROS)</td><td class="n">55 → 46</td><td class="n">55 → 48</td><td class="n save">-13%</td></tr>
+</tbody></table></div>
+  <h3>Bundles</h3>
+  <div class="panel"><svg viewBox="0 0 760 194" class="chart" role="img" aria-label="Change in cores vs bracketing baseline">
+<rect x="612.6" y="30" width="77.7" height="130" class="band" data-tip="Noise band ±0.47 cores: 2 × single-run sd from back-to-back baselines"/>
+<line x1="280.0" x2="280.0" y1="30" y2="160" class="grid"/>
+<text x="280.0" y="178" class="tick" text-anchor="middle">-4.5</text>
+<line x1="321.3" x2="321.3" y1="30" y2="160" class="grid"/>
+<text x="321.3" y="178" class="tick" text-anchor="middle">-4.0</text>
+<line x1="362.5" x2="362.5" y1="30" y2="160" class="grid"/>
+<text x="362.5" y="178" class="tick" text-anchor="middle">-3.5</text>
+<line x1="403.8" x2="403.8" y1="30" y2="160" class="grid"/>
+<text x="403.8" y="178" class="tick" text-anchor="middle">-3.0</text>
+<line x1="445.1" x2="445.1" y1="30" y2="160" class="grid"/>
+<text x="445.1" y="178" class="tick" text-anchor="middle">-2.5</text>
+<line x1="486.4" x2="486.4" y1="30" y2="160" class="grid"/>
+<text x="486.4" y="178" class="tick" text-anchor="middle">-2.0</text>
+<line x1="527.6" x2="527.6" y1="30" y2="160" class="grid"/>
+<text x="527.6" y="178" class="tick" text-anchor="middle">-1.5</text>
+<line x1="568.9" x2="568.9" y1="30" y2="160" class="grid"/>
+<text x="568.9" y="178" class="tick" text-anchor="middle">-1.0</text>
+<line x1="610.2" x2="610.2" y1="30" y2="160" class="grid"/>
+<text x="610.2" y="178" class="tick" text-anchor="middle">-0.5</text>
+<line x1="651.5" x2="651.5" y1="30" y2="160" class="axis0"/>
+<text x="651.5" y="178" class="tick" text-anchor="middle">+0.0</text>
+<line x1="692.7" x2="692.7" y1="30" y2="160" class="grid"/>
+<text x="692.7" y="178" class="tick" text-anchor="middle">+0.5</text>
+<line x1="734.0" x2="734.0" y1="30" y2="160" class="grid"/>
+<text x="734.0" y="178" class="tick" text-anchor="middle">+1.0</text>
+<text x="282.0" y="21" class="axn">← saves CPU (cores)</text>
+<text x="732.0" y="21" class="axn" text-anchor="end">costs CPU →</text>
+<text x="268" y="46" class="lbl" text-anchor="end">Bundle: behaviour-neutral</text>
+<line x1="459.4" x2="412.3" y1="42" y2="42" class="conn"/>
+<circle cx="459.4" cy="42" r="5" class="d-idle" data-tip="Bundle: behaviour-neutral · idle -2.33 cores (-52%)"/>
+<circle cx="412.3" cy="42" r="5" class="d-nav" data-tip="Bundle: behaviour-neutral · navigating -2.90 cores (-57%), controller 20.0 Hz"/>
+<text x="268" y="76" class="lbl" text-anchor="end">Bundle: full</text>
+<line x1="390.2" x2="329.4" y1="72" y2="72" class="conn"/>
+<circle cx="390.2" cy="72" r="5" class="d-idle" data-tip="Bundle: full · idle -3.17 cores (-71%)"/>
+<circle cx="329.4" cy="72" r="5" class="d-nav" data-tip="Bundle: full · navigating -3.90 cores (-76%), controller 10.0 Hz"/>
+<text x="268" y="106" class="lbl" text-anchor="end">Bundle: full + lean bridge</text>
+<line x1="364.0" x2="308.8" y1="102" y2="102" class="conn"/>
+<circle cx="364.0" cy="102" r="5" class="d-idle" data-tip="Bundle: full + lean bridge · idle -3.48 cores (-80%)"/>
+<circle cx="308.8" cy="102" r="5" class="d-nav" data-tip="Bundle: full + lean bridge · navigating -4.15 cores (-81%), controller 10.0 Hz"/>
+<text x="268" y="136" class="lbl" text-anchor="end">Full + lean bridge, RViz on</text>
+<line x1="414.6" x2="399.6" y1="132" y2="132" class="conn"/>
+<circle cx="414.6" cy="132" r="5" class="d-idle" data-tip="Full + lean bridge, RViz on · idle -2.87 cores (-66%)"/>
+<circle cx="399.6" cy="132" r="5" class="d-nav" data-tip="Full + lean bridge, RViz on · navigating -3.05 cores (-60%), controller 10.0 Hz"/>
+</svg></div>
+  <h3>All numbers</h3>
+  <div class="tscroll"><table class="data"><thead><tr><th>Change (one at a time unless “Bundle”)</th><th class="n">Idle cores</th><th class="n">Δ idle</th><th class="n">Nav cores</th><th class="n">Δ nav</th><th class="n">Controller Hz (target)</th><th class="n">Missed-rate warns / 25 s</th><th class="n">PSS MB</th><th class="n">Δ PSS</th></tr></thead><tbody>
+<tr class="base"><td>Your command — mean of 23 bracketing baselines</td><td class="n">4.17</td><td class="n">±0.24</td><td class="n">4.79</td><td class="n">±0.22</td><td class="n">20.1 (20)</td><td class="n">–</td><td class="n">718</td><td class="n">–</td></tr>
+<tr><td>rviz:=false</td><td class="n">2.30</td><td class="n save">-1.69</td><td class="n">2.24</td><td class="n save">-2.33</td><td class="n">20.0 (20)</td><td class="n">0</td><td class="n">481</td><td class="n save">-237</td></tr>
+<tr><td>ekf:=true</td><td class="n">3.65</td><td class="n flat">-0.23</td><td class="n">4.29</td><td class="n flat">-0.25</td><td class="n">16.7 (20)</td><td class="n">17</td><td class="n">735</td><td class="n cost">+16</td></tr>
+<tr><td>aruco:=false</td><td class="n">3.13</td><td class="n save">-0.70</td><td class="n">3.81</td><td class="n save">-0.68</td><td class="n">20.1 (20)</td><td class="n">2</td><td class="n">597</td><td class="n save">-122</td></tr>
+<tr><td>stm32:=false (drops battery_node)</td><td class="n">3.47</td><td class="n flat">-0.40</td><td class="n">4.07</td><td class="n save">-0.45</td><td class="n">20.1 (20)</td><td class="n">6</td><td class="n">682</td><td class="n save">-38</td></tr>
+<tr><td>Nav2 lifecycle bonds off</td><td class="n">2.63</td><td class="n save">-1.26</td><td class="n">3.44</td><td class="n save">-1.08</td><td class="n">20.1 (20)</td><td class="n">5</td><td class="n">715</td><td class="n flat">-4</td></tr>
+<tr><td>Nav2 composition (1 process)</td><td class="n">3.44</td><td class="n flat">-0.43</td><td class="n">4.63</td><td class="n flat">+0.13</td><td class="n">20.1 (20)</td><td class="n">200</td><td class="n">659</td><td class="n save">-59</td></tr>
+<tr><td>overlay:=true</td><td class="n">4.72</td><td class="n flat">+0.31</td><td class="n">5.42</td><td class="n flat">+0.34</td><td class="n">20.2 (20)</td><td class="n">70</td><td class="n">778</td><td class="n cost">+60</td></tr>
+<tr><td>nav_profile:=mppi</td><td class="n">3.83</td><td class="n flat">-0.05</td><td class="n">4.31</td><td class="n flat">-0.15</td><td class="n">20.1 (20)</td><td class="n">0</td><td class="n">718</td><td class="n flat">-0</td></tr>
+<tr><td>Lean jetson_bridge_node (code)</td><td class="n">2.89</td><td class="n save">-1.01</td><td class="n">3.65</td><td class="n save">-0.89</td><td class="n">20.2 (20)</td><td class="n">15</td><td class="n">719</td><td class="n flat">-1</td></tr>
+<tr><td>DWB debug publishers off †</td><td class="n">3.62</td><td class="n flat">-0.32</td><td class="n">4.07</td><td class="n flat">-0.38</td><td class="n">20.1 (20)</td><td class="n">6</td><td class="n">719</td><td class="n flat">-0</td></tr>
+<tr><td>controller_frequency 20 → 10 Hz (MPPI unloaded)</td><td class="n">3.96</td><td class="n flat">+0.02</td><td class="n">4.37</td><td class="n flat">-0.21</td><td class="n">10.1 (10)</td><td class="n">0</td><td class="n">714</td><td class="n flat">-4</td></tr>
+<tr><td>DWB samples 20×40 → 10×20 †</td><td class="n">4.19</td><td class="n flat">-0.40</td><td class="n">4.24</td><td class="n save">-0.92</td><td class="n">20.0 (20)</td><td class="n">6</td><td class="n">718</td><td class="n flat">+0</td></tr>
+<tr><td>10 Hz + 10×20 samples + coarser steps (MPPI unloaded)</td><td class="n">3.95</td><td class="n flat">+0.14</td><td class="n">4.29</td><td class="n flat">-0.13</td><td class="n">10.0 (10)</td><td class="n">0</td><td class="n">714</td><td class="n flat">-4</td></tr>
+<tr><td>Global costmap sized to the map</td><td class="n">4.63</td><td class="n flat">+0.01</td><td class="n">5.21</td><td class="n flat">+0.01</td><td class="n">20.2 (20)</td><td class="n">45</td><td class="n">707</td><td class="n flat">-11</td></tr>
+<tr><td>Global costmap at 0.10 m</td><td class="n">4.52</td><td class="n flat">-0.05</td><td class="n">5.00</td><td class="n flat">-0.13</td><td class="n">8.9 (20)</td><td class="n">12</td><td class="n">709</td><td class="n flat">-9</td></tr>
+<tr><td>Costmap publishing lean</td><td class="n">4.42</td><td class="n flat">-0.10</td><td class="n">5.02</td><td class="n flat">-0.07</td><td class="n">20.1 (20)</td><td class="n">29</td><td class="n">718</td><td class="n flat">-1</td></tr>
+<tr><td>Costmap update rates halved</td><td class="n">4.39</td><td class="n flat">-0.14</td><td class="n">5.05</td><td class="n flat">-0.05</td><td class="n">20.2 (20)</td><td class="n">31</td><td class="n">718</td><td class="n flat">-1</td></tr>
+<tr><td>Costmaps: map-sized + lean publishing</td><td class="n">4.50</td><td class="n flat">+0.03</td><td class="n">5.33</td><td class="n flat">+0.26</td><td class="n">19.4 (20)</td><td class="n">119</td><td class="n">707</td><td class="n flat">-12</td></tr>
+<tr><td>Unload unused planners/MPPI/behaviours</td><td class="n">4.31</td><td class="n flat">-0.10</td><td class="n">4.97</td><td class="n flat">-0.06</td><td class="n">20.1 (20)</td><td class="n">32</td><td class="n">707</td><td class="n flat">-11</td></tr>
+<tr><td>AMCL max_beams 240 → 60</td><td class="n">4.35</td><td class="n flat">-0.01</td><td class="n">4.96</td><td class="n flat">-0.03</td><td class="n">20.2 (20)</td><td class="n">22</td><td class="n">719</td><td class="n flat">+1</td></tr>
+<tr><td>AMCL particles 500–2000 → 200–800</td><td class="n">4.44</td><td class="n flat">+0.08</td><td class="n">5.03</td><td class="n flat">+0.05</td><td class="n">20.2 (20)</td><td class="n">24</td><td class="n">718</td><td class="n flat">-0</td></tr>
+<tr><td>AMCL beams + particles</td><td class="n">4.45</td><td class="n flat">+0.02</td><td class="n">4.96</td><td class="n flat">-0.07</td><td class="n">20.2 (20)</td><td class="n">36</td><td class="n">718</td><td class="n flat">-0</td></tr>
+<tr><td>Bundle: behaviour-neutral</td><td class="n">2.16</td><td class="n save">-2.33</td><td class="n">2.20</td><td class="n save">-2.90</td><td class="n">20.0 (20)</td><td class="n">0</td><td class="n">340</td><td class="n save">-378</td></tr>
+<tr><td>Bundle: full</td><td class="n">1.30</td><td class="n save">-3.17</td><td class="n">1.23</td><td class="n save">-3.90</td><td class="n">10.0 (10)</td><td class="n">0</td><td class="n">292</td><td class="n save">-426</td></tr>
+<tr><td>Bundle: full + lean bridge</td><td class="n">0.89</td><td class="n save">-3.48</td><td class="n">0.96</td><td class="n save">-4.15</td><td class="n">10.0 (10)</td><td class="n">0</td><td class="n">293</td><td class="n save">-425</td></tr>
+<tr><td>Bundle: full + lean bridge, RViz on</td><td class="n">1.47</td><td class="n save">-2.87</td><td class="n">2.04</td><td class="n save">-3.05</td><td class="n">10.0 (10)</td><td class="n">0</td><td class="n">530</td><td class="n save">-188</td></tr>
+</tbody></table></div>
+<p class="note">† the two baselines around this run differed by more than 0.5 cores, so its Δ carries extra uncertainty.</p>
+</section>
+
+<section id="reco">
+  <header><span class="eyebrow">Ordered by measured saving per unit of effort</span><h2>What to change</h2></header>
+  <div class="reco"><div class="item"><h3>1 · Turn RViz off on the robot computer<span class="pill free">no behaviour change</span></h3><p>RViz alone is 67% of a core and 235 MB; switching it off measured -1.69 idle / -2.33 navigating cores on the laptop. On the edge device run it on the laptop instead, and keep costmap displays off — each subscribed costmap makes the robot serialise it over Wi-Fi.</p><pre>ros2 launch perceptron_robot_bringup nav.launch.py jetson:=192.168.1.7 \
+    map:=$HOME/perceptron_test_ws/src/perceptron_navigation/maps/room_map.yaml \
+    ekf:=false overlay:=false rviz:=false aruco:=false</pre></div><div class="item"><h3>2 · Stop the ArUco localizer once it is not needed<span class="pill free">no behaviour change</span></h3><p>nav.launch.py never exposes it, so your command always starts it — yet with --no-aruco on the Jetson it receives nothing, while its Python TF listener and 92 Hz /odom subscription cost 59% of a core and 123 MB. Passing <code>aruco:=false</code> on the nav.launch.py command line already reaches localization.launch.py. Measured: -0.70 idle / -0.68 navigating cores on the laptop.</p></div><div class="item"><h3>3 · Turn Nav2 lifecycle bonds off (or slow them)<span class="pill trade">trade-off</span></h3><p>Nine bonds heartbeat at 10 Hz on one shared /bond topic that every bond subscriber receives (102 Hz × 11 subscribers). The two lifecycle managers alone cost 37% of a core and every Nav2 server pays ~5–10% for it. Measured with the Nav2 manager’s 7 bonds off: -1.26 idle / -1.08 navigating cores on the laptop; on the Nano, the optimised run (all 9 bonds off, together with the lean bridge) took each idle server from 7–17% to 0–2%. Trade-off: the lifecycle manager no longer notices a crashed server — use <code>respawn</code> instead. Set <code>bond_timeout: 0.0</code> in both lifecycle managers’ parameter dicts (not with a global SetParameter — see the method notes).</p><pre># localization.launch.py -&gt; lifecycle_manager_localization parameters
+{&#x27;use_sim_time&#x27;: False, &#x27;autostart&#x27;: True, &#x27;node_names&#x27;: [&#x27;map_server&#x27;, &#x27;amcl&#x27;], &#x27;bond_timeout&#x27;: 0.0}</pre></div><div class="item"><h3>4 · Make jetson_bridge_node publish at the rates consumers need<span class="pill">code change</span></h3><p>It republishes every STM32 frame: odom, TF, IMU and two battery floats at ~100 Hz each, and wakes for ~195 Hz of raw “reply” frames it throws away. Own cost 58%, plus battery_node 31% and every TF listener downstream. A 4-change patch (subscribe only to the ZMQ topics it uses, battery at 2 Hz, skip IMU work with no subscriber, odom+TF at ≤50 Hz while integrating every sample) measured -1.01 idle / -0.89 navigating cores on the laptop. On the Jetson side, stop forwarding the raw 0x55/0x56 frames as “reply”, which also frees Nano CPU.</p></div><div class="item"><h3>5 · Controller: publish less debug, then decide on the rate<span class="pill trade">trade-off</span></h3><p>DWB records the full evaluation of all 800 trajectories every cycle whenever publish_evaluation or publish_trajectories is true (both default true), even with no subscriber. Measured on controller_server itself while navigating: debug publishers off -20%, 10×20 samples -46%, 10 Hz -34%, all three -51%. On the laptop total these sit inside run-to-run noise because the controller is only part of the bill; on the Nano they matter. controller_server is 71% of a core while navigating on the laptop and 68% of a Nano core (it cannot hold 20 Hz there). At 0.35 m/s, 10 Hz is 3.5 cm per cycle. <strong>Unload MPPI first:</strong> while FollowPathMPPI is loaded, any controller_frequency below 20 Hz makes it refuse to configure (“Controller period more then model dt”, model_dt 0.05 s) and the entire Nav2 bringup aborts — measured twice before this was traced.</p><pre>FollowPath:
+  publish_evaluation: false
+  publish_trajectories: false
+  publish_global_plan: false
+  publish_transformed_plan: false
+  debug_trajectory_details: false
+controller_frequency: 10.0   # edge only; vx_samples 10, vtheta_samples 20</pre></div><div class="item"><h3>6 · Size the global costmap to the room and unload unused plugins<span class="pill free">no behaviour change</span></h3><p>The 48 m rolling window is 921,600 cells for a 12 × 11 m map (52,779 cells) and is sent in full. Yet it is not where the CPU goes: sizing it to the map changed planner_server by -5%, and every costmap change stayed inside the laptop noise. Do not coarsen it to 0.10 m: that run could not plan through the 0.75 m doorway (8.9 Hz controller, planner failures). Unloading MPPI, three spare planners and two behaviours: -0.10 idle / -0.06 navigating cores on the laptop — not a CPU win on its own, but on a Jetson Nano it is mandatory — the Humble arm64 MPPI plugin kills controller_server with SIGILL on the Cortex-A57 even though your behaviour tree never uses it.</p><pre>global_costmap: rolling_window: false   # drop width/height; static layer sizes it
+always_send_full_costmap: false
+controller_plugins: [FollowPath]
+planner_plugins: [Smac2D]</pre></div><div class="item"><h3>7 · EKF on is not a CPU cost here<span class="pill free">no behaviour change</span></h3><p>ekf:=true measured -0.23 idle / -0.25 navigating cores on the laptop — inside the noise. The filter costs 18% of a core, and in exchange the bridge stops publishing TF at ~100 Hz (-13% on the bridge) while the EKF publishes it at 30 Hz, so every TF listener does less. Choose EKF on accuracy grounds; CPU is not a reason to leave it off.</p></div><div class="item"><h3>8 · AMCL and composition are second-order<span class="pill trade">trade-off</span></h3><p>AMCL at 240 beams × up to 2000 particles is cheap while the robot is parked and only updates on motion; with emulated 5 Hz updates, 60 beams cut AMCL itself by 20% and beams + 200–800 particles by 22% (laptop total: inside noise). Composition (one container) saved memory (-59 MB) but with component_container_isolated it missed more controller deadlines; worth a retest with a multithreaded container before adopting.</p></div></div>
+</section>
+
+
+<section id="edge">
+  <header><span class="eyebrow">Jetson Nano 4 GB · JetPack 4.6 · ROS 2 Humble in a chroot · measured on the robot</span>
+  <h2>On the edge device itself</h2>
+  <p>The same nodes, parameters, map and sensor stream were run on the Nano, headless, with the real serial bridge
+  feeding it. Two runs where the controller was verified running for the whole window:</p></header>
+  <div class="cols">
+    <div class="finding"><div class="k cost">SIGILL</div><div><h3>Your stock parameters cannot start the controller on a Nano</h3>
+      <p>controller_server loads the MPPI plugin (FollowPathMPPI) even though the DWB behaviour tree never uses it, and the Humble
+      arm64 build dies with an illegal instruction on the Cortex-A57. Loading only DWB fixes it. A Pi 5 (Cortex-A76) is not affected.</p></div></div>
+    <div class="finding"><div class="k cost">299</div><div><h3>Stock: missed control deadlines in 30 s</h3>
+      <p>The controller managed 17.3 Hz of its 20 Hz; ROS nodes used 2.74 of 4 cores and the whole board
+      3.24. Under this load the Nano’s own serial bridge also slipped (odometry fell from 100 to 63–78 Hz in
+      another stock run) and TF extrapolation errors appeared.</p></div></div>
+    <div class="finding"><div class="k save">2</div><div><h3>Optimised: missed deadlines in 30 s</h3>
+      <p>Controller at 10.0 Hz of 10; ROS nodes 0.52 cores navigating and 0.37 idle,
+      whole board 0.99 of 4 including the serial bridge (0.25) and the desktop. With AMCL updating at
+      5 Hz as if moving: 0.57 cores.</p></div></div>
+  </div>
+  <div class="panel"><svg viewBox="0 0 760 130" class="chart" role="img" aria-label="CPU budget by node family">
+<line x1="232.0" x2="232.0" y1="10" y2="104" class="grid"/>
+<text x="232.0" y="122" class="tick" text-anchor="middle">0</text>
+<line x1="350.0" x2="350.0" y1="10" y2="104" class="grid"/>
+<text x="350.0" y="122" class="tick" text-anchor="middle">1</text>
+<line x1="468.0" x2="468.0" y1="10" y2="104" class="grid"/>
+<text x="468.0" y="122" class="tick" text-anchor="middle">2</text>
+<line x1="586.0" x2="586.0" y1="10" y2="104" class="grid"/>
+<text x="586.0" y="122" class="tick" text-anchor="middle">3</text>
+<line x1="704.0" x2="704.0" y1="10" y2="104" class="grid"/>
+<text x="704.0" y="122" class="tick" text-anchor="middle">4</text>
+<text x="220" y="32" class="lbl" text-anchor="end">Nano · stock (MPPI unloaded)</text>
+<rect x="232.0" y="16" width="105.0" height="22" rx="2" style="fill:var(--c2)" data-tip="Nano · stock (MPPI unloaded) · Python nodes (bridge, battery, ArUco, joints): 0.91 A57 cores"/>
+<rect x="339.0" y="16" width="180.7" height="22" rx="2" style="fill:var(--c3)" data-tip="Nano · stock (MPPI unloaded) · Nav2 servers: 1.55 A57 cores"/>
+<rect x="521.7" y="16" width="28.4" height="22" rx="2" style="fill:var(--c4)" data-tip="Nano · stock (MPPI unloaded) · Localisation (AMCL, map, EKF): 0.26 A57 cores"/>
+<rect x="552.0" y="16" width="0.9" height="22" rx="2" style="fill:var(--c5)" data-tip="Nano · stock (MPPI unloaded) · Other: 0.02 A57 cores"/>
+<text x="560.9" y="32" class="val">2.74</text>
+<text x="220" y="74" class="lbl" text-anchor="end">Nano · optimised</text>
+<rect x="232.0" y="58" width="19.3" height="22" rx="2" style="fill:var(--c2)" data-tip="Nano · optimised · Python nodes (bridge, battery, ArUco, joints): 0.18 A57 cores"/>
+<rect x="253.3" y="58" width="34.4" height="22" rx="2" style="fill:var(--c3)" data-tip="Nano · optimised · Nav2 servers: 0.31 A57 cores"/>
+<rect x="289.7" y="58" width="0.6" height="22" rx="2" style="fill:var(--c4)" data-tip="Nano · optimised · Localisation (AMCL, map, EKF): 0.02 A57 cores"/>
+<rect x="291.7" y="58" width="0.6" height="22" rx="2" style="fill:var(--c5)" data-tip="Nano · optimised · Other: 0.01 A57 cores"/>
+<text x="298.8" y="74" class="val">0.52</text>
+</svg><div class="legend"><span><i class="sw" style="background:var(--c1)"></i>RViz</span><span><i class="sw" style="background:var(--c2)"></i>Python nodes (bridge, battery, ArUco, joints)</span><span><i class="sw" style="background:var(--c3)"></i>Nav2 servers</span><span><i class="sw" style="background:var(--c4)"></i>Localisation (AMCL, map, EKF)</span><span><i class="sw" style="background:var(--c5)"></i>Other</span></div></div>
+  <div class="tscroll"><table class="data"><thead><tr><th>Node (Jetson Nano, % of one A57 core)</th><th class="n">Stock idle</th><th class="n">Stock nav</th><th class="n">Optimised idle</th><th class="n">Optimised nav</th><th class="n">PSS MB stock → opt.</th></tr></thead><tbody>
+<tr><td>controller_server</td><td class="n">15.0</td><td class="n">67.8</td><td class="n">7.0</td><td class="n">17.2</td><td class="n">24 → 24</td></tr>
+<tr><td>ArUco localizer</td><td class="n">36.7</td><td class="n">36.0</td><td class="n">0.0</td><td class="n">0.0</td><td class="n">119 → 0</td></tr>
+<tr><td>Jetson bridge (ROS)</td><td class="n">30.5</td><td class="n">30.8</td><td class="n">15.5</td><td class="n">14.4</td><td class="n">42 → 43</td></tr>
+<tr><td>battery_node</td><td class="n">20.2</td><td class="n">21.4</td><td class="n">1.4</td><td class="n">1.2</td><td class="n">34 → 34</td></tr>
+<tr><td>bt_navigator</td><td class="n">15.0</td><td class="n">19.1</td><td class="n">2.2</td><td class="n">6.7</td><td class="n">27 → 29</td></tr>
+<tr><td>lifecycle mgr (nav)</td><td class="n">16.9</td><td class="n">17.0</td><td class="n">0.1</td><td class="n">0.1</td><td class="n">14 → 12</td></tr>
+<tr><td>behavior_server</td><td class="n">12.8</td><td class="n">12.8</td><td class="n">1.4</td><td class="n">1.3</td><td class="n">18 → 18</td></tr>
+<tr><td>planner_server</td><td class="n">12.2</td><td class="n">12.6</td><td class="n">2.1</td><td class="n">2.2</td><td class="n">37 → 25</td></tr>
+<tr><td>AMCL</td><td class="n">10.6</td><td class="n">10.7</td><td class="n">1.6</td><td class="n">1.5</td><td class="n">18 → 17</td></tr>
+<tr><td>smoother_server</td><td class="n">9.7</td><td class="n">9.6</td><td class="n">1.2</td><td class="n">1.1</td><td class="n">17 → 14</td></tr>
+<tr><td>velocity_smoother</td><td class="n">7.2</td><td class="n">8.4</td><td class="n">0.6</td><td class="n">1.6</td><td class="n">12 → 12</td></tr>
+<tr><td>lifecycle mgr (loc)</td><td class="n">8.1</td><td class="n">8.2</td><td class="n">0.1</td><td class="n">0.1</td><td class="n">12 → 11</td></tr>
+<tr><td>waypoint_follower</td><td class="n">7.2</td><td class="n">7.6</td><td class="n">0.1</td><td class="n">0.7</td><td class="n">13 → 13</td></tr>
+<tr><td>map_server</td><td class="n">6.8</td><td class="n">6.8</td><td class="n">0.1</td><td class="n">0.1</td><td class="n">17 → 18</td></tr>
+<tr><td>joint_state_publisher</td><td class="n">2.4</td><td class="n">2.4</td><td class="n">3.0</td><td class="n">2.5</td><td class="n">38 → 38</td></tr>
+<tr><td>ros2 launch</td><td class="n">0.0</td><td class="n">1.8</td><td class="n">0.0</td><td class="n">0.2</td><td class="n">30 → 31</td></tr>
+<tr><td>robot_state_publisher</td><td class="n">0.7</td><td class="n">0.7</td><td class="n">1.0</td><td class="n">0.8</td><td class="n">13 → 14</td></tr>
+<tr class="tot"><td>ROS nodes total</td><td class="n">212</td><td class="n">274</td><td class="n">37</td><td class="n">52</td><td class="n">483 → 354</td></tr></tbody></table></div>
+  <p class="note">Board figures exclude the profiler’s own helper process (~0.38 of a Nano core); they include the
+  Ubuntu desktop still running on the Nano. * Stock = your parameters with the MPPI plugin unloaded, the minimum change needed to run.</p>
+  <h3>Laptop versus Nano, per core</h3>
+  <p class="note">Identical kernels compiled with -O2 on both. Compute runs 3–7× slower per core on the Nano, but a thread wake-up —
+  which this stack performs thousands of times per second even while idle — is 3.9× faster there than inside WSL2. That is why a flat “laptop × 5” would be wrong,
+  and why the Nano was measured directly.</p>
+  <div class="tscroll"><table class="data"><thead><tr><th>Kernel (identical C++/Python source)</th><th class="n">Laptop ms</th><th class="n">Nano ms</th><th class="n">Nano ÷ laptop</th><th>Stands in for</th></tr></thead><tbody>
+<tr><td>Costmap raytrace (720 beams)</td><td class="n">7.0</td><td class="n">22.5</td><td class="n ">3.2×</td><td class="muted">obstacle layer marking/clearing</td></tr>
+<tr><td>Inflation (BFS, 480×480)</td><td class="n">19.0</td><td class="n">77.0</td><td class="n ">4.1×</td><td class="muted">inflation layer</td></tr>
+<tr><td>DWB rollouts (800 traj.)</td><td class="n">27.3</td><td class="n">171.0</td><td class="n ">6.3×</td><td class="muted">controller_server</td></tr>
+<tr><td>AMCL likelihood (2000×240)</td><td class="n">231.0</td><td class="n">1567.0</td><td class="n ">6.8×</td><td class="muted">amcl</td></tr>
+<tr><td>Python scan conversion</td><td class="n">22.5</td><td class="n">168.0</td><td class="n ">7.5×</td><td class="muted">jetson_bridge_node</td></tr>
+<tr><td>Python LD19 packet parse</td><td class="n">27.0</td><td class="n">142.0</td><td class="n ">5.3×</td><td class="muted">jetson_robot_bridge.py (Jetson)</td></tr>
+<tr><td>Python odom maths</td><td class="n">32.5</td><td class="n">183.0</td><td class="n ">5.6×</td><td class="muted">bridge odom/IMU handling</td></tr>
+<tr><td>Thread wake-up ping-pong (20k)</td><td class="n">1232.0</td><td class="n">320.0</td><td class="n save">0.3×</td><td class="muted">every ROS/DDS callback hand-off</td></tr>
+<tr><td>900 kB memcpy ×200</td><td class="n">17.2</td><td class="n">26.9</td><td class="n ">1.6×</td><td class="muted">costmap_raw messages</td></tr>
+</tbody></table></div>
+  <h3>Raspberry Pi 5 (estimate, not measured)</h3>
+  <p>A Cortex-A76 core at 2.4 GHz is typically 2.5–3.5× a Cortex-A57 core at 1.48 GHz on single-thread integer and
+  floating-point work, so dividing the Nano measurements by that range gives <strong>0.78–1.09 cores</strong> navigating
+  for your current stack and <strong>0.15–0.21 cores</strong> for the optimised one, out of 4. Memory is the same as on
+  the Nano (~354–483 MB). Treat these as planning numbers; the same harness (tools/perf) runs on a Pi 5 with Ubuntu 22.04 and
+  would replace them with measurements.</p>
+</section>
+
+<section id="method">
+  <header><span class="eyebrow">So you can trust — and repeat — the numbers</span><h2>How this was measured</h2></header>
+  <div class="cols">
+  <div><h3>Load</h3><p class="note">CPU time from /proc/&lt;pid&gt;/stat for every process in the launch tree over 30 s idle and
+  25–30 s navigating windows; memory as PSS from smaps_rollup. The robot stayed parked: Nav2 ran for real, but the bridge’s
+  /cmd_vel was remapped so motors never moved. To load DWB as if cruising, controller_server’s odometry was fed the velocity
+  Nav2 itself commanded; AMCL was asked for 5 filter updates per second (request_nomotion_update) to stand in for motion.</p></div>
+  <div><h3>Input</h3><p class="note">The laptop runs replayed the Jetson’s own recorded payloads — odometry, IMU, battery, raw
+  replies at the measured 100 Hz and LiDAR at 10 Hz, with fresh timestamps — so the robot’s battery and Wi-Fi could not change
+  the input between runs. A stretch of the recording where someone walked past the robot was cut after it was found to block
+  the planner; affected runs were repeated.</p></div>
+  <div><h3>Noise</h3><p class="note">The laptop slowed by up to 20% as it heated (confirmed with a fixed benchmark). Every change
+  was bracketed by baselines and compared with the time-interpolated baseline. Back-to-back baselines differ by
+  ±0.24 cores idle and ±0.22 navigating (1 sd, single run); differences inside that are not claimed.</p></div>
+  <div><h3>A trap found on the way</h3><p class="note">A global <code>SetParameter</code> in a launch file adds <code>-p</code> to every
+  node, and any <code>-p</code> makes a node’s YAML beat its inline dict: AMCL silently came up with use_sim_time and
+  set_initial_pose from nav2_params.yaml. The first bond-off runs were discarded for this and re-run with the setting scoped
+  to the Nav2 include. Keep this in mind in your own launch files.</p></div>
+  </div>
+  <p class="note">Not measured: the robot physically driving (localisation and costmap load while moving are emulated as above),
+  RViz running on a second machine, and a Pi 5. Everything here was run live on 23 Sep 2026.</p>
+</section>
+<footer>Perceptron compute budget · harness and variants: tools/perf/ in the jetson-cpu-profiling-nav2 worktree (profile_run.py, profile_nav.launch.py, make_params.py, replay/fake_jetson.py, edge/edge_nav.launch.py)</footer>
+
+</div>
+<div id="tip" hidden></div>
+<script>
+(function () {
+  var tip = document.getElementById('tip');
+  document.addEventListener('mousemove', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t.getAttribute('data-tip');
+    tip.hidden = false;
+    var x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + 'px';
+    tip.style.top = (e.clientY + 16) + 'px';
+  });
+})();
+</script>
