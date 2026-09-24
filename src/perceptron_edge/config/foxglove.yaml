@@ -1,0 +1,46 @@
+# Foxglove WebSocket bridge: how the laptop sees the robot.
+#
+# One TCP connection from Foxglove (Windows app or app.foxglove.dev) to
+# ws://<jetson-ip>:8765. The bridge only subscribes to a topic while a client
+# is actually displaying it, so with nobody connected it costs nothing, and
+# ROS/DDS traffic never leaves the robot (DDS on 127.0.0.1, fastdds_localhost_udp.xml).
+
+foxglove_bridge:
+  ros__parameters:
+    port: 8765
+    address: 0.0.0.0
+    # Viewable topics. /viz/scan and /viz/odom are /scan and /odom throttled to
+    # 5 Hz, subscribed only while someone watches; the raw 10 Hz scan and
+    # 50 Hz odometry are deliberately not offered.
+    topic_whitelist:
+      - '^/map$'
+      - '^/viz/scan$'
+      - '^/tf$'
+      - '^/tf_static$'
+      - '^/robot_description$'
+      - '^/plan$'
+      - '^/local_plan$'
+      - '^/global_costmap/costmap$'
+      - '^/local_costmap/costmap$'
+      - '^/amcl_pose$'
+      - '^/viz/odom$'
+      - '^/battery/state$'
+      - '^/jetson/status$'
+      - '^/cmd_vel$'
+      - '^/goal_pose$'
+      - '^/initialpose$'
+      - '^/dock/status$'
+    # What Foxglove may publish: goals and pose estimates from the 3D panel,
+    # and /cmd_vel from the Teleop panel.
+    client_topic_whitelist:
+      - '^/goal_pose$'
+      - '^/initialpose$'
+      - '^/cmd_vel$'
+    # Save the SLAM map from Foxglove's Service Call panel.
+    service_whitelist:
+      - '^/slam_toolbox/save_map$'
+      - '^/slam_toolbox/serialize_map$'
+    # No parameter browsing or connection graph: both poll the ROS graph.
+    capabilities: [clientPublish, services, assets]
+    send_buffer_limit: 10000000
+    use_sim_time: false

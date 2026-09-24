@@ -1,0 +1,13 @@
+# Jetson Nano overrides for slam_toolbox, loaded AFTER
+# perceptron_navigation/config/slam_toolbox.yaml. Scan matching, loop closure
+# and resolution are untouched - map quality is the point of mapping.
+
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    # map -> odom at 20 Hz instead of 50 Hz. Every TF listener on the robot
+    # (costmaps, controller, planner, behaviours) wakes for each one.
+    transform_publish_period: 0.05
+    # Occupancy grid regenerated and republished every 3 s instead of 2 s:
+    # the grid is rebuilt from the whole pose graph each time.
+    map_update_interval: 3.0

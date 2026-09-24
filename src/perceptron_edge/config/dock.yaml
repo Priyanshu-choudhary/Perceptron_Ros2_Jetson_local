@@ -1,0 +1,113 @@
+# Charging-dock tuning for `robot dock` (perceptron_edge/dock.py).
+#
+# Plain YAML, read once when the dock tool starts. With --symlink-install an
+# edit here takes effect on the next `robot dock`, no rebuild.
+#
+# What is NOT here: where the robot sits when docked. That is measured on the
+# robot by `robot dock-teach` and lives in $PERCEPTRON_WS/config/dock_station.yaml.
+
+dock:
+  # ---- the board on the dock: the printed 2x2 DICT_6X6_250 sheet, ids 0-3
+  dictionary: DICT_6X6_250
+  board_ids: {0: top_left, 1: top_right, 2: bottom_left, 3: bottom_right}
+  tile_size: 0.06          # side of one black square, m
+  tile_spacing: 0.066      # centre to centre, m (60 mm tile + 6 mm gap)
+  min_tiles: 2             # one lone 60 mm tile has a flip ambiguity in yaw
+  max_reprojection_error: 2.5   # px
+  max_range: 1.6           # m; the 6x6 modules stop decoding around 1.5 m
+  edge_margin: 0.06        # ignore boards in the outer 6% of the image, where
+                           # the wide-angle lens model is least accurate
+
+  # ---- camera (camera_calib.json, measured at 1280x720)
+  camera_matrix: [410.9212916385953, 0.0, 634.8042096493966,
+                  0.0, 411.4395116912116, 347.58359871233904,
+                  0.0, 0.0, 1.0]
+  dist_coeffs: [0.030287865182229395, -0.002860707267771121,
+                -0.004223044189411946, -0.0003374289867825264,
+                -0.0003820853552867496]
+  calibration_size: [1280, 720]
+  base_frame: base_footprint
+  camera_frame: camera_optical_link
+  camera_rate: 10.0        # Hz while docking; ~40 ms of one core per frame
+  camera_latency: 0.05     # s from exposure to the bridge's frame stamp
+
+  # ---- tracking the docked pose in odom
+  estimate_window: 6.0     # s of views in the weighted median
+  range_weight_power: 4    # weight = (teach range / range)^power: near views dominate
+  max_turn_rate_for_vision: 0.25  # rad/s; frames taken while turning faster are skipped
+
+  # ---- approach geometry (distances along the dock axis, from the docked pose)
+  # Views of this board from beyond ~0.6 m are unreliable (measured: 1.1-1.3 px
+  # reprojection and heading jumping by 5 deg past 0.62 m, 0.2 px inside), so
+  # the line-up happens 0.22 m out, 0.59 m from the board.
+  staging_distance: 0.22   # line up this far out before driving in
+  min_run_in: 0.14         # closer than this, back off before correcting sideways
+  # The run-in steering removes ~2 cm of sideways error over 0.2 m on its own
+  # (measured: -2.1 cm -> -0.1 cm), so the line-up only has to get within 2 cm.
+  lateral_tolerance: 0.02  # m off the axis accepted before the run-in
+  yaw_tolerance: 0.035     # rad (2 deg) accepted before the run-in
+  max_align_steps: 4
+  push_past: 0.02          # drive this far past the taught docked pose before
+                           # deciding the contacts did not close
+  # Stop once this far out to look again from close range (the board reads to a
+  # millimetre there). Measured: a heading error left over from the 0.6 m view
+  # put the robot on the contacts 5.6 deg crooked, and it did not charge.
+  checkpoint_distance: 0.10
+  checkpoint_lateral: 0.02 # m; further off than this, back off and line up again
+  checkpoint_yaw: 0.03     # rad; more crooked than this, turn on the spot first
+  near_dock_range: 1.0     # board seen and closer than this: skip Nav2
+
+  # ---- speeds (m/s, rad/s)
+  v_stage: 0.08            # lining up
+  v_final: 0.05            # run-in
+  v_contact: 0.03          # last centimetres
+  v_reverse: 0.07
+  w_max: 0.5
+  w_min: 0.15              # slower in-place turns stall on this drivetrain
+  turn_gain: 1.5
+  steer_length: 0.10       # m; run-in steering is critically damped over this length
+  w_final_max: 0.25
+
+  # ---- charging proof (current < 0 = charger feeding the battery)
+  charge_current: -0.15    # A, median over 0.15 s while driving, 1.5 s at rest
+  settle_time: 1.0         # s stopped before judging
+  verify_time: 1.5
+  # A full battery takes almost no charge current. Also accept: current fell by
+  # full_battery_drop A AND voltage rose by full_battery_rise V against the
+  # reading taken just before the run-in (both only happen when a charger connects).
+  # Only above full_battery_voltage: at 10.8 V a baseline taken as the motors
+  # wound down once passed the drop and rise tests with no charger at all.
+  full_battery_voltage: 12.3   # V, 4.1 V/cell
+  full_battery_drop: 0.3
+  full_battery_rise: 0.15
+
+  # ---- when the contacts do not close
+  # Measured 24 Sep: after an off-centre touch, a run that the camera put 3 mm
+  # from the taught pose did not charge and the next, aimed 1.2 cm left, did -
+  # the charger box had been nudged. Later attempts aim to either side.
+  max_attempts: 5
+  lateral_offsets: [0.0, 0.012, -0.012, 0.024, -0.024]   # m, aim point per attempt
+  nudge_distance: 0.01     # first remedy: push this much further
+  wiggle_angle: 0.04       # second: turn +-this (rad) against the contacts
+
+  # ---- teach: camera tilt calibration from a straight reverse off the charger
+  calib_distance: 0.25     # m
+  calib_speed: 0.03        # m/s
+  calib_max_range: 0.62    # m; only views this close are used
+  calib_max_reproj: 0.6    # px
+
+  # ---- safety
+  rear_clearance: 0.45     # m from the lidar; reversing stops closer than this
+  rear_half_angle_deg: 35.0
+  run_in_timeout: 25.0
+  total_timeout: 420.0     # s, Nav2 leg included
+  nav_attempts: 3
+  undock_distance: 0.35
+
+  # ---- plumbing
+  zmq_host: 127.0.0.1
+  telemetry_port: 5555
+  cmd_port: 5556
+  cmd_vel_topic: /cmd_vel
+  odom_topic: /odom
+  scan_topic: /scan

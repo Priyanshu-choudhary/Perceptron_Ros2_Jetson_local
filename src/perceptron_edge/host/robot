@@ -1,0 +1,358 @@
+#!/bin/bash
+# robot - run the Perceptron ROS 2 stack on this Jetson Nano.
+#
+#   robot start slam                   build a map (Nav2 runs on it too)
+#   robot start nav map=room_map       navigate on a saved map
+#   robot stop | status | cpu | logs
+#   robot save-map NAME                save the SLAM map to the maps folder
+#   robot pose X Y YAW                 tell AMCL where the robot is (nav mode)
+#   robot goal X Y YAW                 drive to a point and report the outcome
+#   robot cancel                       cancel the current goal (or docking)
+#   robot dock X Y YAW                 Nav2 to X Y YAW in front of the charger,
+#                                      then the camera drives onto the contacts
+#   robot dock | dock here             same with the last X Y YAW | no Nav2
+#   robot undock [M]                   reverse off the charger (default 0.35 m)
+#   robot dock-teach | dock-watch      record the docked pose | live readout
+#   robot maps | shell | build | help
+#
+# Options for start (key=value): map ekf aruco nav motors foxglove teleop
+# teleop_port log_level. See `robot help`.
+#
+# ROS 2 Humble lives in an Ubuntu 22.04 chroot on the SD card (JetPack 4.6 is
+# Ubuntu 18.04). This script mounts it, keeps the serial bridge
+# (jetson_robot_bridge.py) running with the right ArUco setting, and runs
+# `ros2 launch perceptron_edge edge.launch.py` inside it as user jetson.
+
+set -u
+BASE=/mnt/sdcard/perceptron
+R=/mnt/sdcard/ros2_chroot
+WS=/opt/perceptron_ws
+RUN=$BASE/run
+LOGS=$BASE/logs
+BRIDGE=/home/jetson/jetson_robot_bridge.py
+UID_GID=1000:1000
+DIALOUT_GID=20
+FOXGLOVE_PORT=8765
+
+if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
+mkdir -p "$RUN" "$LOGS"
+
+say()  { printf '%s\n' "$*"; }
+die()  { printf 'robot: %s\n' "$*" >&2; exit 1; }
+
+mount_chroot() {
+    local m
+    for m in proc sys dev dev/pts dev/shm; do
+        mountpoint -q "$R/$m" || mount --bind "/$m" "$R/$m" || die "cannot mount $m"
+    done
+    cp -f /etc/resolv.conf "$R/etc/resolv.conf" 2>/dev/null
+}
+
+ros_env() {  # the environment every ROS command inside the chroot gets
+    # DDS on 127.0.0.1 over UDP, no shared memory: see config/fastdds_localhost_udp.xml.
+    # (ROS_LOCALHOST_ONLY=1 would add the shared-memory transport back.)
+    printf '%s ' HOME=$WS/home LANG=C.UTF-8 TZ="$(cat /etc/timezone 2>/dev/null || echo UTC)" PATH=/usr/local/bin:/usr/bin:/bin \
+        ROS_LOCALHOST_ONLY=0 ROS_DOMAIN_ID=0 ROS_LOG_DIR=$WS/log/ros PERCEPTRON_WS=$WS \
+        FASTRTPS_DEFAULT_PROFILES_FILE=$WS/install/perceptron_edge/share/perceptron_edge/config/fastdds_localhost_udp.xml \
+        RCUTILS_COLORIZED_OUTPUT=0 PYTHONUNBUFFERED=1
+}
+
+in_ros() {  # in_ros 'shell command'   (runs inside the chroot as jetson)
+    mount_chroot
+    # shellcheck disable=SC2046
+    chroot --userspec=$UID_GID --groups=$DIALOUT_GID "$R" /usr/bin/env -i $(ros_env) /bin/bash -c \
+        "source /opt/ros/humble/setup.bash && source $WS/install/setup.bash && $1"
+}
+
+chroot_pids() {
+    local p
+    for p in /proc/[0-9]*; do
+        [ "$(readlink "$p/root" 2>/dev/null)" = "$R" ] && printf '%s\n' "${p#/proc/}"
+    done
+}
+
+ros_running() {
+    [ -f "$RUN/ros.pid" ] && kill -0 "$(cat "$RUN/ros.pid")" 2>/dev/null
+}
+
+# ------------------------------------------------------------ serial bridge
+bridge_pid() { pgrep -f "python3 .*jetson_robot_bridge.py" | head -1; }
+
+bridge_mode() {  # on | demand | off | none   (the running bridge's camera setting)
+    local pid; pid=$(bridge_pid)
+    [ -z "$pid" ] && { echo none; return; }
+    case "$(tr '\0' ' ' < "/proc/$pid/cmdline")" in
+        *--no-aruco*) echo off ;;
+        *--aruco-on-demand*) echo demand ;;
+        *) echo on ;;
+    esac
+}
+
+bridge_describe() {
+    case $(bridge_mode) in
+        on) echo 'ArUco ON' ;; demand) echo 'camera on demand' ;; off) echo 'camera off' ;; *) echo 'not running' ;;
+    esac
+}
+
+bridge_start() {  # bridge_start true|false  (ArUco always on | camera only while docking)
+    local flags="--aruco-on-demand"
+    [ "$1" = true ] && flags=""
+    say "serial bridge: starting ($([ "$1" = true ] && echo 'ArUco ON' || echo 'camera on demand'))"
+    sudo -u jetson env HOME=/home/jetson setsid nohup python3 -u "$BRIDGE" $flags \
+        >> "$LOGS/serial_bridge.log" 2>&1 < /dev/null &
+    local i
+    for i in $(seq 1 30); do
+        sleep 0.5
+        tail -n 40 "$LOGS/serial_bridge.log" | grep -q "STM32 CONNECTED" && { say "serial bridge: up"; return 0; }
+    done
+    say "serial bridge: started, but no STM32 telemetry yet - check $LOGS/serial_bridge.log"
+}
+
+bridge_stop() {
+    local pid; pid=$(bridge_pid)
+    [ -z "$pid" ] && return 0
+    pkill -INT -f "python3 .*jetson_robot_bridge.py"
+    local i
+    for i in $(seq 1 20); do [ -z "$(bridge_pid)" ] && return 0; sleep 0.5; done
+    pkill -KILL -f "python3 .*jetson_robot_bridge.py"
+}
+
+bridge_ensure() {  # bridge_ensure true|false
+    local mode want=demand; mode=$(bridge_mode)
+    [ "$1" = true ] && want=on
+    if [ "$mode" = none ]; then bridge_start "$1"; return; fi
+    if [ "$mode" = "$want" ]; then say "serial bridge: already running ($(bridge_describe))"; return; fi
+    case $want in
+        on)     say "serial bridge: running with $(bridge_describe), restarting it with ArUco ON" ;;
+        demand) say "serial bridge: running with $(bridge_describe), restarting it with the camera on demand (idle until docking)" ;;
+    esac
+    bridge_stop; bridge_start "$1"
+}
+
+bridge_camera_ready() {  # docking needs the camera: on, or on demand
+    case $(bridge_mode) in
+        on|demand) return 0 ;;
+        off)  say "serial bridge: started with --no-aruco - restarting it with the camera on demand"
+              say "               (odometry pauses for a few seconds)"
+              bridge_stop; bridge_start false; sleep 2 ;;
+        none) bridge_start false; sleep 2 ;;
+    esac
+}
+
+# ------------------------------------------------------------------ battery
+battery() {
+    python3 - <<'EOF' 2>/dev/null || echo "battery: no data (serial bridge not running?)"
+import zmq, msgpack, statistics
+c = zmq.Context(); s = c.socket(zmq.SUB); s.setsockopt(zmq.SUBSCRIBE, b"battery")
+s.setsockopt(zmq.RCVTIMEO, 2000); s.connect("tcp://127.0.0.1:5555")
+v = [msgpack.unpackb(s.recv_multipart()[1], raw=False).get("voltage", 0) for _ in range(30)]
+m = statistics.median(v); cell = m / 3
+print("battery: %.2f V (%.2f V/cell)%s" % (m, cell, "  ** LOW - charge now **" if cell < 3.6 else ""))
+EOF
+}
+
+# ------------------------------------------------------------------ commands
+cmd_start() {
+    local mode=${1:-}; shift || true
+    [ "$mode" = slam ] || [ "$mode" = nav ] || die "usage: robot start slam|nav [key=value ...]"
+    ros_running && die "already running ($(cat "$RUN/ros.mode")). Use: robot stop"
+    local args="" aruco=false kv
+    for kv in "$@"; do
+        [[ "$kv" == *=* ]] || die "options are key=value, got '$kv'"
+        args="$args ${kv%%=*}:=${kv#*=}"
+        [ "${kv%%=*}" = aruco ] && [[ "${kv#*=}" =~ ^(true|1|yes|on)$ ]] && aruco=true
+    done
+    [ "$mode" = slam ] && [ "$aruco" = true ] && { say "note: aruco only seeds AMCL, which runs in nav mode - ignoring"; aruco=false; }
+    mount_chroot
+    bridge_ensure $aruco
+    local ts log; ts=$(date +%Y%m%d_%H%M%S); log="$LOGS/ros_${mode}_$ts.log"
+    cat > "$RUN/launch.sh" <<EOF
+exec chroot --userspec=$UID_GID --groups=$DIALOUT_GID $R /usr/bin/env -i $(ros_env) /bin/bash -c \
+  'source /opt/ros/humble/setup.bash && source $WS/install/setup.bash && exec ros2 launch perceptron_edge edge.launch.py mode:=$mode$args'
+EOF
+    setsid /bin/bash "$RUN/launch.sh" > "$log" 2>&1 < /dev/null &
+    echo $! > "$RUN/ros.pid"
+    echo "$mode$args" > "$RUN/ros.mode"
+    echo "$mode $*" > "$RUN/ros.args"
+    date '+%F %T' > "$RUN/ros.started"
+    ln -sf "$log" "$LOGS/latest.log"
+    say "ROS: starting  mode=$mode$args"
+    local i
+    for i in $(seq 1 60); do
+        sleep 1
+        ros_running || { tail -n 30 "$log"; die "ROS stopped during startup (log: $log)"; }
+        if grep -q "lifecycle_manager_navigation.*Managed nodes are active" "$log" \
+           || { [[ "$args" == *"nav:=false"* ]] && grep -q "slam_toolbox" "$log"; }; then
+            say "ROS: up after ${i}s"; break
+        fi
+        if [ "$mode" = nav ] && [ "$i" = 12 ]; then
+            say "ROS: waiting for a pose estimate - Nav2 activates once AMCL knows where the robot is"
+            say "     (Foxglove: 'Publish pose estimate', or: robot pose X Y YAW)"
+            break
+        fi
+    done
+    say "log:      $log"
+    say "foxglove: ws://$(hostname -I | awk '{print $1}'):$FOXGLOVE_PORT"
+    battery
+}
+
+cmd_stop() {
+    if ! ros_running && [ -z "$(chroot_pids)" ]; then say "ROS: not running"; return 0; fi
+    ros_running && kill -INT "$(cat "$RUN/ros.pid")" 2>/dev/null
+    local i
+    for i in $(seq 1 25); do [ -z "$(chroot_pids)" ] && break; sleep 1; done
+    local left; left=$(chroot_pids)
+    if [ -n "$left" ]; then kill -TERM $left 2>/dev/null; sleep 3; left=$(chroot_pids); [ -n "$left" ] && kill -KILL $left 2>/dev/null; fi
+    rm -f "$RUN/ros.pid" "$RUN/ros.mode" "$RUN/ros.started"
+    say "ROS: stopped (serial bridge left running; 'robot stop-bridge' stops it too)"
+}
+
+node_names() {  # node names of running chroot processes
+    local p cmd
+    for p in $(chroot_pids); do
+        cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+        if [[ "$cmd" =~ __node:=([A-Za-z0-9_]+) ]]; then echo "${BASH_REMATCH[1]}"
+        elif [[ "$cmd" =~ /lib/[a-z0-9_]+/([a-z_]+) ]]; then echo "${BASH_REMATCH[1]}"; fi
+    done | sort -u
+}
+
+cmd_status() {
+    local pid; pid=$(bridge_pid)
+    if [ -n "$pid" ]; then say "serial bridge: running pid $pid ($(bridge_describe))"
+    else say "serial bridge: NOT running"; fi
+    if ros_running; then
+        say "ROS: running since $(cat "$RUN/ros.started")  mode=$(cat "$RUN/ros.mode")"
+        local mode running want missing=""
+        mode=$(cut -d' ' -f1 < "$RUN/ros.mode")
+        running=$(node_names)
+        want="robot_state_publisher jetson_bridge_node battery_node"
+        [ "$mode" = slam ] && want="$want slam_toolbox"
+        [ "$mode" = nav ] && want="$want map_server amcl"
+        grep -q "nav:=false" "$RUN/ros.mode" || want="$want controller_server planner_server behavior_server bt_navigator velocity_smoother dock_guard"
+        for w in $want; do grep -qx "$w" <<< "$running" || missing="$missing $w"; done
+        say "nodes: $(echo $running)"
+        [ -n "$missing" ] && say "MISSING (crashed?):$missing  -> robot logs"
+    else
+        say "ROS: not running"
+    fi
+    say "foxglove: ws://$(hostname -I | awk '{print $1}'):$FOXGLOVE_PORT"
+    battery
+}
+
+cmd_save_map() {
+    local name=${1:-}; [ -n "$name" ] || die "usage: robot save-map NAME"
+    [[ "$name" =~ ^[A-Za-z0-9_-]+$ ]] || die "map name: letters, digits, _ and - only"
+    ros_running || die "ROS is not running"
+    in_ros "ros2 run nav2_map_server map_saver_cli -f $WS/maps/$name --ros-args -p save_map_timeout:=10.0" \
+        2>&1 | grep -E "Map saved successfully|rror|ail" || true
+    if grep -q '^slam' "$RUN/ros.mode"; then
+        in_ros "ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \"{filename: '$WS/maps/$name'}\"" \
+            | tail -1
+    fi
+    ls -la "$R$WS/maps/$name".* 2>/dev/null && say "use it with: robot start nav map=$name"
+}
+
+# pose and goal go through perceptron_edge's `dock` tool rather than
+# `ros2 topic pub`: bt_navigator takes /goal_pose best-effort and Foxglove
+# subscribes to it too, so `topic pub -w 1` could publish as soon as Foxglove
+# matched and the goal was silently lost - the "send it 2-3 times" bug.
+cmd_pose() {
+    [ $# -eq 3 ] || die "usage: robot pose X Y YAW   (metres, metres, radians, map frame)"
+    dock_tool --shared pose "$@"
+}
+
+cmd_goal() {
+    [ $# -eq 3 ] || die "usage: robot goal X Y YAW   (the robot will drive; Ctrl-C or robot cancel stops it)"
+    dock_tool goal "$@"
+}
+
+cmd_cancel() {
+    # "dock( |$)", not "dock": dock_guard is a long-running Nav2 helper, not a job to cancel
+    if pkill -INT -f "$WS/install/perceptron_edge/lib/perceptron_edge/dock( |$)"; then say "docking: cancelled"; fi
+    in_ros "ros2 service call /navigate_to_pose/_action/cancel_goal action_msgs/srv/CancelGoal '{}'" | tail -1
+}
+
+dock_tool() {  # dock_tool [--shared] SUBCOMMAND ARGS...   (foreground; Ctrl-C stops the robot)
+    local exclusive=true
+    [ "${1:-}" = --shared ] && { exclusive=false; shift; }
+    ros_running || die "ROS is not running. Start it first: robot start nav map=NAME"
+    if [ $exclusive = true ] && pgrep -f "$WS/install/perceptron_edge/lib/perceptron_edge/dock (go|here|goal|undock|teach)" > /dev/null; then
+        die "another goal/dock command is driving the robot (robot cancel stops it)"
+    fi
+    in_ros "exec $WS/install/perceptron_edge/lib/perceptron_edge/dock $*"
+}
+
+cmd_dock() {  # robot dock [X Y YAW | here]
+    local sub=go
+    case "${1:-}" in
+        here) sub=here; shift; [ $# -eq 0 ] || die "usage: robot dock here" ;;
+        "")   ;;
+        *)    [ $# -eq 3 ] || die "usage: robot dock X Y YAW   (map frame: the spot in front of the charger)" ;;
+    esac
+    ros_running || die "ROS is not running. Start it first: robot start nav map=NAME"
+    grep -q "motors:=false" "$RUN/ros.mode" && die "ROS was started with motors=false - the robot cannot drive onto the dock"
+    bridge_camera_ready
+    dock_tool $sub "$@"
+}
+
+cmd_help() { sed -n '2,/^# teleop_port/p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
+
+start options (key=value):
+  map=NAME        nav mode map (a name from `robot maps`, or a .yaml path). Default room_map
+  ekf=true        EKF (IMU + wheels) owns odom -> base_footprint
+  aruco=true      ArUco pose seeding (nav mode): camera detection on + aruco_localizer_node
+  nav=false       slam mode without Nav2 - drive with teleop only
+  teleop=true teleop_port=/dev/ttyUSB2   CT6B RC receiver plugged into the Jetson
+  motors=false    bench mode: everything runs, motors ignore /cmd_vel
+  foxglove=false  no laptop view
+  log_level=info  more Nav2/SLAM logging (default warn)
+
+other:
+  robot cpu [SECONDS]   CPU / memory of every part (default 10 s)
+  robot logs            follow the current log
+  robot shell           a ROS 2 shell on the robot (ros2 topic list, ...)
+  robot build           rebuild the workspace after changing src/
+  robot stop-bridge     also stop the serial bridge
+  robot bridge [aruco=true]   only the serial bridge, for running ROS on the laptop instead
+
+docking (the charger + the 2x2 ArUco board on it):
+  robot dock-teach      robot ON the charger and charging: record the docked pose (once)
+  robot dock X Y YAW    Nav2 to X Y YAW (in front of the charger), then camera docking;
+                        retries until the current reads negative (charging)
+  robot dock            the same, with the last X Y YAW
+  robot dock here       camera docking only, robot already facing the charger
+  robot undock [M]      reverse M metres off the charger (default 0.35)
+  robot dock-watch      live: board distance, offset from the docked pose, current
+  robot cancel          stops docking too (so does Ctrl-C)
+EOF
+}
+
+case "${1:-help}" in
+    start)       shift; cmd_start "$@" ;;
+    stop)        cmd_stop ;;
+    restart)     shift; prev=$(cat "$RUN/ros.args" 2>/dev/null); cmd_stop
+                 if [ $# -gt 0 ]; then cmd_start "$@"; elif [ -n "$prev" ]; then cmd_start $prev; else die "nothing to restart"; fi ;;
+    status)      cmd_status ;;
+    cpu)         shift; python3 "$BASE/bin/robot_cpu.py" "$R" "${1:-10}" ;;
+    logs)        tail -n 60 -F "$LOGS/latest.log" ;;
+    save-map)    shift; cmd_save_map "$@" ;;
+    maps)        ls -1 "$R$WS/maps/" | grep '\.yaml$' | sed 's/\.yaml$//' ;;
+    pose)        shift; cmd_pose "$@" ;;
+    goal)        shift; cmd_goal "$@" ;;
+    cancel)      cmd_cancel ;;
+    dock)        shift; cmd_dock "$@" ;;
+    undock)      shift; [ $# -le 1 ] || die "usage: robot undock [METRES]"
+                 bridge_camera_ready; dock_tool undock "$@" ;;
+    dock-teach)  bridge_camera_ready; dock_tool teach ;;
+    dock-watch)  bridge_camera_ready; dock_tool --shared watch ;;
+    shell)       mount_chroot; exec chroot --userspec=$UID_GID --groups=$DIALOUT_GID "$R" /usr/bin/env -i $(ros_env) TERM="${TERM:-xterm}" \
+                     /bin/bash --rcfile <(echo "source /opt/ros/humble/setup.bash; source $WS/install/setup.bash; PS1='(robot ros) \\w\$ '") -i ;;
+    build)       in_ros "cd $WS && colcon build --symlink-install 2>&1 | tail -5" ;;
+    stop-bridge) cmd_stop; bridge_stop; say "serial bridge: stopped" ;;
+    bridge)      # only the serial bridge, for the old laptop workflow (nav.launch.py on the laptop)
+                 shift; a=false; [[ "${1:-}" =~ ^aruco=(true|1|yes|on)$ ]] && a=true
+                 ros_running && die "ROS is running on the robot - robot stop first (two stacks would both drive the motors)"
+                 bridge_ensure $a ;;
+    help|-h|--help) cmd_help ;;
+    *)           die "unknown command '$1' (robot help)" ;;
+esac

@@ -1,0 +1,53 @@
+<!--
+  Navigate-to-pose tree for the Jetson: perceptron_navigation's
+  nav_to_pose_dwb.xml (Smac2D + DWB, stock recoveries) with one step in front.
+
+  UndockIfOnCharger: on the charger the footprint already touches the dock, and
+  every Nav2 motion - rotation shim, DWB, Spin, BackUp - refuses to start from
+  a pose in collision. The planner still accepts the goal, so without this the
+  robot cycles through its recoveries on the spot and fails a minute later.
+  dock_guard (perceptron_edge) answers /dock/undock_if_docked: immediately when
+  the robot is not on the charger, otherwise after reversing 0.35 m off it.
+
+  It is a ReinitializeGlobalLocalization node only because that is the one
+  stock Humble BT node that calls an arbitrary std_srvs/Empty service; nothing
+  is reinitialised. server_timeout covers the reverse (~10 s).
+
+  Plain Sequence (not Reactive): once the undock step has succeeded it is not
+  ticked again for this goal, including when the goal is updated mid-way.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Sequence name="LeaveChargerThenNavigate">
+      <ReinitializeGlobalLocalization name="UndockIfOnCharger"
+                                      service_name="dock/undock_if_docked"
+                                      server_timeout="30000"/>
+      <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+        <PipelineSequence name="NavigateWithReplanning">
+          <RateController hz="1.0">
+            <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="Smac2D"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </RecoveryNode>
+          </RateController>
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <FollowPath path="{path}" controller_id="FollowPath"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </RecoveryNode>
+        </PipelineSequence>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Spin spin_dist="1.57"/>
+            <Wait wait_duration="5"/>
+            <BackUp backup_dist="0.30" backup_speed="0.05"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </RecoveryNode>
+    </Sequence>
+  </BehaviorTree>
+</root>

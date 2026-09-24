@@ -1,0 +1,109 @@
+# Jetson Nano overrides for Nav2 + AMCL.
+#
+# Loaded AFTER perceptron_navigation/config/nav2_params.yaml, so every value
+# not listed here - robot radius, velocity limits, critics, inflation, the
+# reasons behind them - still comes from that file. Only what the Nano needs
+# differently is here, each change measured on the robot (23 Sep 2026,
+# tools/perf): stock params 2.74 of 4 cores navigating with 299 missed
+# control deadlines per 30 s; this set 0.52 cores and 2.
+
+amcl:
+  ros__parameters:
+    use_sim_time: false
+    # No ground truth on the real robot: seed with "Publish pose estimate" in
+    # Foxglove, `robot pose x y yaw`, or the ArUco localizer.
+    set_initial_pose: false
+    # AMCL scores every particle against every beam on each update, and it
+    # updates up to 10x/s while turning. 2000 x 240 costs ~157 ms per update on
+    # a Nano core (bench/bench.cpp); 1200 x 120 is ~4x less and still uses a
+    # sixth of the 720 bins the bridge publishes.
+    max_beams: 120
+    min_particles: 300
+    max_particles: 1200
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    odom_topic: /odom
+    default_nav_to_pose_bt_xml: BT_XML_REWRITTEN_BY_LAUNCH
+    # How long a BT action node waits for a server to acknowledge a goal. 50 ms
+    # timed out on the Nano ("Timed out while waiting for action server to
+    # acknowledge goal request for compute_path_to_pose") and the goal failed.
+    default_server_timeout: 200
+    # dock_guard's /dock/undock_if_docked must exist when the tree loads (1 s
+    # default); it is a Python node racing Nav2's C++ ones on a busy Nano.
+    wait_for_service_timeout: 5000
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    # 10 Hz is 3.5 cm of travel per cycle at 0.35 m/s; the velocity smoother
+    # still runs at 20 Hz. At 20 Hz the Nano managed only 17 Hz anyway.
+    controller_frequency: 10.0
+    # DWB only. MPPI must not be loaded on a Nano: the Humble arm64 build dies
+    # with SIGILL on the Cortex-A57, and while loaded it also refuses any
+    # controller_frequency below 20 Hz (its model_dt is 0.05 s).
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      # 10 x 20 = 200 candidate trajectories instead of 800 (-46% on
+      # controller_server), coarser integration steps.
+      vx_samples: 10
+      vtheta_samples: 20
+      linear_granularity: 0.1
+      angular_granularity: 0.05
+      # publish_evaluation / publish_trajectories make DWB record all
+      # trajectories every cycle even with no subscriber (-20% when off).
+      # publish_local_plan stays on: it is what Foxglove shows as the local plan.
+      debug_trajectory_details: false
+      publish_evaluation: false
+      publish_trajectories: false
+      publish_global_plan: false
+      publish_transformed_plan: false
+      publish_cost_grid_pc: false
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      # always_send_full_costmap stays true (nav2_params.yaml): the full grid is
+      # only built while someone subscribes, and incremental updates are
+      # something Foxglove cannot draw.
+      obstacle_layer:
+        # /traversability_obstacles has no publisher indoors.
+        observation_sources: scan
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      # Sized by the map (241 x 219 cells for room_map) instead of a 48 m
+      # rolling window of 921,600 cells. In SLAM mode it grows with the map.
+      rolling_window: false
+      publish_frequency: 0.5
+      obstacle_layer:
+        observation_sources: scan
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    # The DWB behaviour tree only ever asks for Smac2D.
+    planner_plugins: ["Smac2D"]
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    # What the behaviour tree's recoveries use.
+    behavior_plugins: ["spin", "backup", "wait"]
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: false
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    odom_topic: /odom
+
+map_server:
+  ros__parameters:
+    use_sim_time: false

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  Fast DDS for the Jetson: UDP on 127.0.0.1 only, no shared memory.
+
+  With ROS_LOCALHOST_ONLY=1, Humble's rmw_fastrtps always adds the shared-memory
+  transport. On this Nano that transport got stuck after a short-lived ROS
+  process (robot dock / goal / pose / dock-watch) left the graph: every
+  node's writer thread spun in SharedMemTransport::push_discard re-sending to a
+  full queue, and the idle stack went from 1.06 to 3.8 of 4 cores within 30 s,
+  staying there until ROS was restarted (measured 24 Sep 2026, gdb backtraces).
+  Loopback UDP has no such state to get stuck in.
+
+  `robot` sets ROS_LOCALHOST_ONLY=0 and points FASTRTPS_DEFAULT_PROFILES_FILE
+  here; the whitelist keeps every socket on 127.0.0.1, so ROS traffic still
+  never leaves the robot.
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_localhost</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>127.0.0.1</address>
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="localhost_udp_only" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>udp_localhost</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>
