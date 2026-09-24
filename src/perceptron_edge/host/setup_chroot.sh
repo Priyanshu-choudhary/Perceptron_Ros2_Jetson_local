@@ -1,6 +1,11 @@
 #!/bin/bash
 # Self-contained ROS 2 Humble (Ubuntu 22.04 arm64) chroot on the data SD card.
 # Nothing outside /mnt/sdcard/ros2_chroot is modified except temporary bind mounts.
+#
+# Step 1 of setting up a Jetson (JetPack 4.6 is Ubuntu 18.04, Humble needs
+# 22.04). Run as user jetson, it sudoes where needed; safe to re-run.
+#   bash setup_chroot.sh
+# Then sync the workspace into it and run install.sh (see the root README).
 set -e
 R=/mnt/sdcard/ros2_chroot
 
@@ -41,6 +46,8 @@ apt-get install -y -q --no-install-recommends \
   ros-humble-nav2-velocity-smoother ros-humble-dwb-core ros-humble-dwb-plugins ros-humble-dwb-critics \
   ros-humble-nav2-rotation-shim-controller ros-humble-nav2-smac-planner ros-humble-nav2-navfn-planner \
   ros-humble-nav2-theta-star-planner ros-humble-nav2-mppi-controller \
+  ros-humble-slam-toolbox ros-humble-foxglove-bridge ros-humble-topic-tools ros-humble-xacro \
+  python3-colcon-common-extensions python3-serial python3-opencv \
   python3-zmq python3-msgpack python3-numpy python3-psutil python3-yaml
 echo INSIDE_DONE
 IN

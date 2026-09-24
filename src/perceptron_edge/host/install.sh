@@ -3,8 +3,8 @@
 #
 #   sudo /mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/perceptron_edge/host/install.sh
 #
-# Expects the ROS 2 Humble chroot at /mnt/sdcard/ros2_chroot (tools/perf/edge/
-# setup_chroot.sh) and this workspace's src/ synced to /opt/perceptron_ws/src
+# Expects the ROS 2 Humble chroot at /mnt/sdcard/ros2_chroot (host/setup_chroot.sh
+# next to this file) and this workspace's src/ synced to /opt/perceptron_ws/src
 # inside it. Builds the workspace, installs the `robot` command, and links
 # ~/robot and ~/robot_maps. Touches nothing outside /mnt/sdcard except those two
 # links in /home/jetson.

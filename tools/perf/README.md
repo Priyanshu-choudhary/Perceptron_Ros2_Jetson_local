@@ -53,7 +53,7 @@ Launch switches in `profile_nav.launch.py`:
 
 ## Edge board (Jetson Nano measured; Pi 5 the same way)
 
-On JetPack 4.x there is no ROS 2 Humble, so `edge/setup_chroot.sh` builds an
+On JetPack 4.x there is no ROS 2 Humble, so `src/perceptron_edge/host/setup_chroot.sh` builds an
 Ubuntu 22.04 arm64 chroot on the data SD card with only the Nav2 packages the
 stack uses. On a Pi 5 running Ubuntu 22.04, install the same packages natively
 and skip the chroot.

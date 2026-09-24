@@ -194,14 +194,28 @@ Each change is commented in place.
 
 ## Setup / update
 
-From the laptop:
+**A new Jetson** (JetPack 4.6, a data SD card mounted at `/mnt/sdcard`):
 
-```bash
-rsync -a --exclude __pycache__ src/{perceptron_hardware,perceptron_navigation,perceptron_robot_description,perceptron_robot_control,perceptron_robot_bringup,ct6b_teleop,perceptron_edge} jetson@<ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/
-```
+1. The ROS 2 Humble chroot - once, about an hour on the Nano:
+   ```bash
+   scp src/perceptron_edge/host/setup_chroot.sh jetson@<ip>:
+   ssh -t jetson@<ip> bash setup_chroot.sh
+   ```
+2. The serial bridge, on the host (it needs the host's Python 3 with
+   `pyserial`, `pyzmq`, `msgpack` and JetPack's OpenCV):
+   ```bash
+   scp jetson/jetson_robot_bridge.py jetson@<ip>:
+   ```
+3. The workspace, maps and robot data, then build and install `robot`:
+   ```bash
+   rsync -a --exclude __pycache__ src/{perceptron_hardware,perceptron_navigation,perceptron_robot_description,perceptron_robot_control,perceptron_robot_bringup,ct6b_teleop,perceptron_edge} jetson@<ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/
+   ssh -t jetson@<ip> sudo /mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/perceptron_edge/host/install.sh
+   rsync -a src/perceptron_navigation/maps/ jetson@<ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/maps/
+   scp config/marker_map.yaml config/dock_station.yaml jetson@<ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/config/
+   ```
+   `dock_station.yaml` is this robot's taught dock; on another robot or dock,
+   leave it out and run `robot dock-teach` instead.
 
-Then on the Jetson:
-
-```bash
-sudo /mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/perceptron_edge/host/install.sh
-```
+**After changing code**: the `rsync ... src/` line again, then `robot build`
+(or `install.sh` when a package's `setup.py` changed) and `robot restart`.
+Python and YAML are symlink-installed, so for those a `robot restart` is enough.
