@@ -90,6 +90,10 @@ class BatteryNode(Node):
 
         # --- simulated measurements, change these live ---
         self.declare_parameter('simulate', True)
+        # Multiplies /battery/measured_current into the ROS convention above.
+        # The Perceptron's sensor reads the other way round (+1.1 A driving,
+        # -1.3 A on the charger), so battery_real.yaml sets -1.
+        self.declare_parameter('measured_current_sign', 1.0)
         self.declare_parameter('voltage', 12.0)                 # V at the terminals
         self.declare_parameter('current', -2.5)                 # A, negative = discharging
         self.declare_parameter('temperature', 25.0)             # degrees C
@@ -201,7 +205,8 @@ class BatteryNode(Node):
                 self.get_logger().info('battery measurements arrived.')
                 self._warned_no_data = False
             current = self._measured_current
-            return self._measured_voltage, (0.0 if current is None else current)
+            sign = float(self._p('measured_current_sign'))
+            return self._measured_voltage, (0.0 if current is None else sign * current)
 
         cells = int(self._p('cell_count'))
         charging = self._docked and bool(self._p('charge_when_docked'))

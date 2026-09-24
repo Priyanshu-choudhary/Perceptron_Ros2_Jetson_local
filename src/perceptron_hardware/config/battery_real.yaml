@@ -27,6 +27,12 @@ battery_node:
     # Until those arrive it reports present=false with NaN rather than
     # inventing a healthy-looking 12 V.
     simulate: false
+    # The sensor reads POSITIVE while the pack discharges (+1.1 A idle with
+    # Nav2 up) and NEGATIVE on the charger (-1.3 A), the opposite of the ROS
+    # convention /battery/state follows. -1 flips it, so /battery/state says
+    # CHARGING on the dock and the load-sag correction points the right way.
+    # /battery/measured_current keeps the sensor's own sign.
+    measured_current_sign: -1.0
     temperature: 25.0                 # no pack thermistor yet, so this is nominal
     present: true
 
