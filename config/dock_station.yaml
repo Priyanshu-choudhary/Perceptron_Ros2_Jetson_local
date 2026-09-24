@@ -1,0 +1,56 @@
+# Backup of the robot's taught dock station (room map, charger against the
+# wall). The live copy is /opt/perceptron_ws/config/dock_station.yaml inside
+# the chroot; after reflashing the SD card, restore it with
+#   scp config/dock_station.yaml jetson@<jetson-ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/config/
+# or re-teach: robot on the charger, `robot dock-teach`.
+#
+# Charging dock, written by `robot dock-teach` and `robot dock X Y YAW`.
+# board_in_base: the dock board's 3D pose in base_footprint while docked
+#   and charging - THE docking target. robot_in_board: the same, planar and
+#   inverted (board frame: origin under the board centre, +x out of its face).
+# camera_correction: rotation applied to the URDF camera mount, measured by
+#   teach from a straight reverse (pitch/pan in degrees are for reading).
+# predock: map-frame pose Nav2 drives to before the camera takes over.
+# dock_map_pose: where AMCL put the robot when it was taught (info only).
+board_in_base:
+  qw: 0.515673
+  qx: 0.491899
+  qy: -0.492909
+  qz: -0.499157
+  x: 0.33955
+  y: 0.03133
+  z: 0.30591
+camera_correction:
+  frames: 119.0
+  pan_deg: 0.014
+  qw: 0.998979
+  qx: 0.0
+  qy: 0.045169
+  qz: 0.000123
+  rms_mm: 1.829
+  scale: 1.002
+  span_m: 0.248
+  tilt_deg: -5.178
+dock_map_pose:
+  x: -0.015
+  y: 0.145
+  yaw: -0.012
+predock:
+  x: -0.341
+  y: 0.0477
+  yaw: 0.0
+robot_in_board:
+  x: 0.3306
+  y: 0.0207
+  yaw: 3.12582
+taught: '2026-09-24 02:45:09'
+teach_stats:
+  current_a: -1.431
+  frames: 40
+  range_m: 0.36
+  reproj_px: 0.191
+  std_x_mm: 0.21
+  std_y_mm: 0.2
+  std_yaw_deg: 0.036
+  tiles: 4
+  voltage_v: 12.2
