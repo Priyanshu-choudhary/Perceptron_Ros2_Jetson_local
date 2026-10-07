@@ -137,6 +137,46 @@ without moving. How it works and every tuning value:
 `sudo ./robot shell` opens a shell inside the chroot with ROS sourced, for
 `ros2 topic list` and the like.
 
+## Development & Deployment Workflow (Laptop WSL -> Jetson)
+
+> **Note:** The Git repository and primary development environment live on your **laptop (WSL)** (`/home/laptop/perceptron_test_ws`), where there are ample CPU and RAM resources. The Jetson Nano is the runtime target running code in its SD card chroot (`/mnt/sdcard/ros2_chroot/opt/perceptron_ws`).
+
+### Daily Workflow
+
+1. **Develop, test, and commit on the Laptop (WSL):**
+   ```bash
+   cd ~/perceptron_test_ws
+   colcon build --symlink-install
+   ```
+
+2. **Send updated code to the Jetson:**
+   Sync the ROS 2 packages to the Jetson's SD card chroot over the network:
+   ```bash
+   # Sync ROS 2 packages
+   rsync -avz --exclude '__pycache__' --exclude 'build' --exclude 'install' --exclude 'log' \
+     src/{perceptron_hardware,perceptron_navigation,perceptron_robot_description,perceptron_robot_control,perceptron_robot_bringup,ct6b_teleop,perceptron_edge} \
+     jetson@<jetson-ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/src/
+
+   # If maps or config were updated:
+   rsync -avz src/perceptron_navigation/maps/ jetson@<jetson-ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/maps/
+   scp config/marker_map.yaml config/dock_station.yaml jetson@<jetson-ip>:/mnt/sdcard/ros2_chroot/opt/perceptron_ws/config/
+
+   # If the host-side bridge was updated:
+   scp jetson/jetson_robot_bridge.py jetson@<jetson-ip>:/home/jetson/
+   ```
+   *(Replace `<jetson-ip>` with `jetson-desktop.local` or the Tailscale IP `100.80.225.114`).*
+
+3. **Apply and restart on the Jetson:**
+   ```bash
+   ssh jetson@<jetson-ip>
+
+   # For Python/launch/config changes (symlink-installed):
+   sudo ./robot restart
+
+   # If package structure, setup.py, or C++ dependencies changed:
+   sudo ./robot build && sudo ./robot restart
+   ```
+
 ## Setting up a Jetson
 
 In short:
