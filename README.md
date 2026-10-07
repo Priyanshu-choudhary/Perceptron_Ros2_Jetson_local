@@ -67,6 +67,9 @@ From an SSH session on the Jetson. `robot` asks for the sudo password once.
 sudo ./robot start slam                  # build a map
 sudo ./robot save-map room               # save it
 sudo ./robot start nav map=room          # navigate on it
+sudo ./robot start gps                   # outdoor GPS navigation + LiDAR avoidance
+sudo ./robot waypoint 28.6139 77.2090    # drive to GPS coordinate (lat lon)
+sudo ./robot route config/sample_gps_route.yaml # follow GPS waypoint sequence
 sudo ./robot pose -0.015 0.145 0         # where the robot is (or Foxglove: Publish pose estimate)
 sudo ./robot goal 1.0 0.5 0              # drive there; prints progress, Ctrl-C cancels
 sudo ./robot dock -0.341 0.0477 0        # go and charge

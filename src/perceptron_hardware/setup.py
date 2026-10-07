@@ -28,6 +28,7 @@ setup(
             'ekf_watchdog_node = perceptron_hardware.ekf_watchdog_node:main',
             'detect_ports = perceptron_hardware.port_detect:main',
             'jetson_bridge_node = perceptron_hardware.jetson_bridge_node:main',
+            'pixhack_bridge_node = perceptron_hardware.pixhack_bridge_node:main',
         ],
     },
 )

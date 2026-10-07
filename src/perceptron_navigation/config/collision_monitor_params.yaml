@@ -1,0 +1,36 @@
+# Independent Stage 3 Safety Layer: nav2_collision_monitor
+# Directly intercepts /cmd_vel_nav and issues safe /cmd_vel to the robot bridge.
+
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "/cmd_vel_nav"
+    cmd_vel_out_topic: "/cmd_vel"
+    state_topic: "/collision_monitor_state"
+    transform_tolerance: 0.2
+    source_timeout: 1.0
+    stop_pub_timeout: 1.0
+
+    polygons: ["PolygonSlow", "PolygonStop"]
+
+    PolygonSlow:
+      type: "polygon"
+      points: "[0.35, 0.35, 1.0, 0.35, 1.0, -0.35, 0.35, -0.35]"
+      action_type: "slowdown"
+      slowdown_ratio: 0.50
+      visualize: true
+      polygon_pub_topic: "/polygon_slowdown"
+
+    PolygonStop:
+      type: "polygon"
+      points: "[0.00, 0.28, 0.40, 0.28, 0.40, -0.28, 0.00, -0.28]"
+      action_type: "stop"
+      visualize: true
+      polygon_pub_topic: "/polygon_stop"
+
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "/scan"

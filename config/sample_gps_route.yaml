@@ -1,0 +1,21 @@
+# Sample GPS route waypoint file for Perceptron Rover
+# Format: List of latitude, longitude, and optional heading (yaw in degrees)
+# Execute with: robot route config/sample_gps_route.yaml
+
+route_name: "outdoor_test_loop"
+waypoints:
+  - id: 1
+    lat: 28.613939
+    lon: 77.209021
+    yaw: 0.0
+    description: "Start point"
+  - id: 2
+    lat: 28.614000
+    lon: 77.209100
+    yaw: 45.0
+    description: "Waypoint 1"
+  - id: 3
+    lat: 28.614050
+    lon: 77.209050
+    yaw: 90.0
+    description: "Waypoint 2"

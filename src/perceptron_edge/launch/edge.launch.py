@@ -86,11 +86,11 @@ def _resolve_map(value):
 
 def _setup(context):
     mode = LaunchConfiguration('mode').perform(context).strip().lower()
-    if mode not in ('slam', 'nav'):
-        raise RuntimeError(f'mode must be slam or nav, not "{mode}"')
-    ekf = _true(context, 'ekf')
+    if mode not in ('slam', 'nav', 'gps'):
+        raise RuntimeError(f'mode must be slam, nav, or gps, not "{mode}"')
+    ekf = _true(context, 'ekf') or (mode == 'gps')
     aruco = _true(context, 'aruco')
-    nav = _true(context, 'nav') or mode == 'nav'
+    nav = _true(context, 'nav') or (mode in ('nav', 'gps'))
     motors = _true(context, 'motors')
     foxglove = _true(context, 'foxglove')
     teleop = _true(context, 'teleop')
@@ -136,6 +136,11 @@ def _setup(context):
              output='screen', respawn=True, respawn_delay=2.0,
              parameters=[os.path.join(pkg_hw, 'config', 'battery_real.yaml')]),
     ]
+    if mode == 'gps':
+        actions.append(Node(
+            package='perceptron_hardware', executable='pixhack_bridge_node',
+            name='pixhack_bridge_node', output='screen', respawn=True, respawn_delay=2.0,
+            parameters=[{'port': '/dev/pixhack', 'baudrate': 115200, 'publish_rate_hz': 50.0}]))
     if ekf:
         actions.append(Node(package='robot_localization', executable='ekf_node', name='ekf_filter_node',
                             output='screen', arguments=ros_log,
@@ -156,6 +161,22 @@ def _setup(context):
             output='screen', arguments=ros_log,
             parameters=[os.path.join(pkg_nav, 'config', 'slam_toolbox.yaml'),
                         os.path.join(pkg_edge, 'config', 'slam_edge.yaml')]))
+    elif mode == 'gps':
+        dual_ekf_cfg = os.path.join(pkg_nav, 'config', 'dual_ekf_navsat.yaml')
+        actions += [
+            Node(package='robot_localization', executable='ekf_node', name='ekf_filter_node_local',
+                 output='screen', arguments=ros_log, parameters=[dual_ekf_cfg],
+                 remappings=[('/odometry/filtered', '/odometry/local')]),
+            Node(package='robot_localization', executable='navsat_transform_node', name='navsat_transform_node',
+                 output='screen', arguments=ros_log, parameters=[dual_ekf_cfg],
+                 remappings=[('/imu/data', '/imu/data'),
+                             ('/gps/fix', '/gps/fix'),
+                             ('/odometry/filtered', '/odometry/local'),
+                             ('/odometry/gps', '/odometry/gps')]),
+            Node(package='robot_localization', executable='ekf_node', name='ekf_filter_node_global',
+                 output='screen', arguments=ros_log, parameters=[dual_ekf_cfg],
+                 remappings=[('/odometry/filtered', '/odometry/global')]),
+        ]
     else:
         map_yaml = _resolve_map(LaunchConfiguration('map').perform(context))
         actions += [
@@ -183,13 +204,18 @@ def _setup(context):
 
     # ---------------------------------------------------------------- Nav2
     if nav:
-        # Before bt_navigator: its tree calls /dock/undock_if_docked, and a BT
-        # service node whose server is missing fails the tree at load time.
-        # INFO whatever log_level says: it is silent until it backs off the
-        # charger, and that is worth seeing in `robot logs`.
-        actions.append(Node(package='perceptron_edge', executable='dock_guard', name='dock_guard',
-                            output='screen', respawn=True, respawn_delay=2.0,
-                            arguments=['--ros-args', '--log-level', 'info']))
+        active_nav2_params = [nav2_base, os.path.join(pkg_nav, 'config', 'nav2_outdoor_gps.yaml')] if mode == 'gps' else [nav2_base, nav2_edge]
+        if mode != 'gps':
+            # Before bt_navigator: its tree calls /dock/undock_if_docked, and a BT
+            # service node whose server is missing fails the tree at load time.
+            actions.append(Node(package='perceptron_edge', executable='dock_guard', name='dock_guard',
+                                output='screen', respawn=True, respawn_delay=2.0,
+                                arguments=['--ros-args', '--log-level', 'info']))
+        else:
+            col_cfg = os.path.join(pkg_nav, 'config', 'collision_monitor_params.yaml')
+            actions.append(Node(package='nav2_collision_monitor', executable='collision_monitor',
+                                name='collision_monitor', output='screen', arguments=ros_log,
+                                parameters=[col_cfg]))
         remap_ctrl = [('cmd_vel', 'cmd_vel_nav')]
         remap_smoother = [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]
         for name, pkg in (('controller_server', 'nav2_controller'), ('planner_server', 'nav2_planner'),
@@ -198,7 +224,7 @@ def _setup(context):
                           ('velocity_smoother', 'nav2_velocity_smoother')):
             actions.append(Node(
                 package=pkg, executable=name, name=name, output='screen', arguments=ros_log,
-                parameters=[nav2_base, nav2_edge],
+                parameters=active_nav2_params,
                 remappings=(remap_ctrl if name == 'controller_server'
                             else remap_smoother if name == 'velocity_smoother' else [])))
         actions.append(Node(
@@ -239,7 +265,7 @@ def _setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('mode', default_value='nav', description='slam | nav'),
+        DeclareLaunchArgument('mode', default_value='nav', description='slam | nav | gps'),
         DeclareLaunchArgument('map', default_value='room_map', description='nav mode: map name or .yaml path'),
         DeclareLaunchArgument('ekf', default_value='false'),
         DeclareLaunchArgument('aruco', default_value='false'),

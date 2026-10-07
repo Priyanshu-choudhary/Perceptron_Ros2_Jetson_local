@@ -7,6 +7,8 @@
 #   robot save-map NAME                save the SLAM map to the maps folder
 #   robot pose X Y YAW                 tell AMCL where the robot is (nav mode)
 #   robot goal X Y YAW                 drive to a point and report the outcome
+  robot waypoint LAT LON [YAW]  drive to GPS coordinate (gps mode)
+  robot route <ROUTE.YAML>      follow a sequence of GPS waypoints (gps mode)
 #   robot cancel                       cancel the current goal (or docking)
 #   robot dock X Y YAW                 Nav2 to X Y YAW in front of the charger,
 #                                      then the camera drives onto the contacts
@@ -154,7 +156,7 @@ EOF
 # ------------------------------------------------------------------ commands
 cmd_start() {
     local mode=${1:-}; shift || true
-    [ "$mode" = slam ] || [ "$mode" = nav ] || die "usage: robot start slam|nav [key=value ...]"
+    [ "$mode" = slam ] || [ "$mode" = nav ] || [ "$mode" = gps ] || die "usage: robot start slam|nav|gps [key=value ...]"
     ros_running && die "already running ($(cat "$RUN/ros.mode")). Use: robot stop"
     local args="" aruco=false kv
     for kv in "$@"; do
@@ -228,6 +230,7 @@ cmd_status() {
         want="robot_state_publisher jetson_bridge_node battery_node"
         [ "$mode" = slam ] && want="$want slam_toolbox"
         [ "$mode" = nav ] && want="$want map_server amcl"
+        [ "$mode" = gps ] && want="$want pixhack_bridge_node ekf_filter_node_local navsat_transform_node ekf_filter_node_global collision_monitor"
         grep -q "nav:=false" "$RUN/ros.mode" || want="$want controller_server planner_server behavior_server bt_navigator velocity_smoother dock_guard"
         for w in $want; do grep -qx "$w" <<< "$running" || missing="$missing $w"; done
         say "nodes: $(echo $running)"
@@ -295,6 +298,18 @@ cmd_dock() {  # robot dock [X Y YAW | here]
     dock_tool $sub "$@"
 }
 
+cmd_waypoint() {
+    [ $# -ge 2 ] || die "usage: robot waypoint LAT LON [YAW_DEG]"
+    ros_running || die "ROS is not running. Start with: robot start gps"
+    in_ros "exec ros2 run perceptron_edge gps_waypoint waypoint $*"
+}
+
+cmd_route() {
+    [ $# -eq 1 ] || die "usage: robot route <ROUTE.YAML>"
+    ros_running || die "ROS is not running. Start with: robot start gps"
+    in_ros "exec ros2 run perceptron_edge gps_waypoint route $1"
+}
+
 cmd_help() { sed -n '2,/^# teleop_port/p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
 
 start options (key=value):
@@ -339,6 +354,8 @@ case "${1:-help}" in
     maps)        ls -1 "$R$WS/maps/" | grep '\.yaml$' | sed 's/\.yaml$//' ;;
     pose)        shift; cmd_pose "$@" ;;
     goal)        shift; cmd_goal "$@" ;;
+    waypoint)    shift; cmd_waypoint "$@" ;;
+    route)       shift; cmd_route "$@" ;;
     cancel)      cmd_cancel ;;
     dock)        shift; cmd_dock "$@" ;;
     undock)      shift; [ $# -le 1 ] || die "usage: robot undock [METRES]"
