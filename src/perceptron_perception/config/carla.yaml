@@ -19,3 +19,22 @@ projection_check_node:
     camera_info_topic: /carla/camera/camera_info
     max_range: 100.0
     report_period: 5.0
+
+lidar_preprocessor_node:
+  ros__parameters:
+    use_sim_time: true
+    cloud_topic: /carla/lidar/points
+    target_frame: base_footprint
+    # The rover rig sits 2.04 m ahead of the Microlino's rear axle and its lidar sees the
+    # car behind it. carla_bridge logs the host box at start-up (and in /carla/bridge_info);
+    # this is that box plus ~15 cm. On the real rover use the rover's own body instead.
+    self_box_enabled: true
+    self_box: [-0.45, 2.0, -0.9, 0.9, -0.3, 1.55]
+    max_range: 50.0
+    # 3, not the node default 6: the rover lidar puts only 4-7 points on a person at 10-40 m
+    # (pedestrian recall 22-55 % -> 99.6-100 %); costs ~10 more small scenery clusters per frame.
+    cluster_min_points: 3
+
+cloud_eval_node:
+  ros__parameters:
+    use_sim_time: true

@@ -17,6 +17,7 @@ shutdown the totals, also written to ~/carla_logs/loc_eval_<time>.csv.
 """
 
 import csv
+import json
 import os
 import time
 
@@ -26,7 +27,9 @@ import tf2_ros
 from nav_msgs.msg import Odometry
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
+from std_msgs.msg import String
 
 from perceptron_carla import loc_metrics as lm
 from perceptron_navigation import camera_projection as cp
@@ -56,6 +59,14 @@ class LocalizationEvalNode(Node):
             self.total[topic] = lm.ErrorStats()
             self.create_subscription(Odometry, topic, lambda m, t=topic: self._est_cb(t, m), 50)
 
+        # Refuse to score a run the bridge is not set up for: in gt mode the bridge itself
+        # publishes odom -> base_footprint and anchors map at the world origin, so the "error"
+        # would be the distance from the origin plus a TF fight with the EKF.
+        self.bridge_mode = None
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(String, '/carla/bridge_info', self._info_cb, latched)
+
         os.makedirs(p('log_dir').value, exist_ok=True)
         self.csv_path = os.path.join(p('log_dir').value, time.strftime('loc_eval_%Y%m%d_%H%M%S.csv'))
         self.create_timer(float(p('report_period').value), self._report)
@@ -69,7 +80,20 @@ class LocalizationEvalNode(Node):
         self.gt.add(self._t(msg.header.stamp), msg.pose.pose.position.x, msg.pose.pose.position.y,
                     lm.yaw_from_quat(q.x, q.y, q.z, q.w))
 
+    def _info_cb(self, msg):
+        try:
+            self.bridge_mode = json.loads(msg.data).get('tf_mode')
+        except ValueError:
+            return
+        if self.bridge_mode != 'ekf':
+            self.get_logger().error(
+                'carla_bridge is running with --tf-mode %s. It publishes odom -> base_footprint '
+                'itself, so the EKFs are not in charge and nothing will be scored. Stop it and '
+                'restart it with --tf-mode ekf (after this launch).' % self.bridge_mode)
+
     def _est_cb(self, topic, msg):
+        if self.bridge_mode != 'ekf':
+            return
         t = self._t(msg.header.stamp)
         gt = self.gt.at(t)
         if gt is None:
@@ -94,6 +118,12 @@ class LocalizationEvalNode(Node):
             store[topic].add(t, (x, y, yaw), gt)
 
     def _report(self):
+        if self.bridge_mode != 'ekf':
+            self.get_logger().warn(
+                'not scoring: carla_bridge %s' % ('not seen yet (start it with --tf-mode ekf)'
+                                                  if self.bridge_mode is None
+                                                  else 'is in --tf-mode %s, needs ekf' % self.bridge_mode))
+            return
         lines = [lm.format_summary(topic, s.summary()) for topic, s in self.period.items()]
         totals = self._write_totals()
         self.get_logger().info('localization error, last period:\n  ' + '\n  '.join(lines)

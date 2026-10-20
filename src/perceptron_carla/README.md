@@ -178,6 +178,30 @@ directly, and those are NED/FRD (yaw 0 = north, clockwise positive), while ROS e
 (counter-clockwise). `yaw_offset: π/2` fixes the zero but not the direction. Check the sign of
 `/imu/data` yaw rate against wheel yaw rate on the robot.
 
+**Guard.** `localization_eval_node` reads `/carla/bridge_info` and refuses to score (with a
+message saying why) unless the bridge runs with `--tf-mode ekf`. Otherwise it would score the
+distance from the world origin while the bridge and the EKF fight over `odom → base_footprint`.
+
+## LiDAR model and scenarios (added in Stage 4)
+
+* **Dropout and noise.** CARLA's default `dropoff_general_rate` 0.45 silently discards 45 % of
+  all returns. The bridge sets it to 0 (`--lidar-dropoff`) and adds 1.5 cm range noise
+  (`--lidar-noise`), like a VLP-16. About 14.5 k points per sweep instead of about 8 k.
+* **Semantic twin.** `/carla/ground_truth/lidar_semantic` has the same rays from the same pose, each with
+  `obj_idx` (actor id) and `obj_tag` (class). Evaluation only (`--no-lidar-gt` to turn off).
+* **`/carla/bridge_info`** (latched JSON): `tf_mode`, mount, vehicle, `ego_id`, rig position and
+  the host body box in `base_footprint`. The box is also logged at start-up; the preprocessor's
+  self box is that plus a margin.
+* **`--crossing N`**: N pedestrians pacing across the road at 5, 10, 15 … m ahead of the rig at
+  0.8-1.4 m/s, no AI controller, so their true positions and velocities are known at every tick.
+  This is the repeatable case for clustering, tracking and prediction. The ego stays put.
+
+**RViz preset** (Best Effort already set where needed):
+
+```bash
+rviz2 -d $(ros2 pkg prefix perceptron_carla)/share/perceptron_carla/rviz/carla.rviz
+```
+
 ## Other outputs (ground truth for perception)
 
 Depth, semantic and instance segmentation, 2D visible/amodal and 3D boxes, box debug image,

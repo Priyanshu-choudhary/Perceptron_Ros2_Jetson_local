@@ -22,6 +22,8 @@ Ground truth (evaluation and training ONLY -- never feed these to the EKF or a m
   /carla/ground_truth/boxes_2d        Detection2DArray, visible part; score = visible fraction
   /carla/ground_truth/boxes_2d_amodal Detection2DArray, projected 3D box
   /carla/camera/boxes_debug      Image bgr8, /carla/ground_truth MarkerArray
+  /carla/ground_truth/lidar_semantic  PointCloud2 x,y,z,obj_idx,obj_tag: same rays as the lidar
+  /carla/bridge_info             std_msgs/String (latched) JSON: tf_mode, mount, ego_id, host box
   /clock
 
 TF (each transform has exactly one publisher; see README "TF ownership")
@@ -253,6 +255,7 @@ class CarlaBridge(Node):
         self.pub_inst_col = img_pub("/carla/camera/instance_color")
         self.pub_boxes_dbg = img_pub("/carla/camera/boxes_debug")
         self.pub_pc = self.create_publisher(PointCloud2, "/carla/lidar/points", sensor_qos)
+        self.pub_pc_gt = self.create_publisher(PointCloud2, "/carla/ground_truth/lidar_semantic", sensor_qos)
         # Robot-equivalent topics: same names and QoS as the real drivers.
         self.pub_odom = self.create_publisher(Odometry, "/odom", 10)
         self.pub_imu = self.create_publisher(Imu, "/imu/data", sensor_qos)
@@ -360,13 +363,26 @@ class CarlaBridge(Node):
         # ---------------- 3D LiDAR (one full sweep per tick)
         rover = args.mount == "rover"
         channels = args.lidar_channels or (16 if rover else 64)
+        lidar_geometry = (("channels", channels), ("range", 100), ("rotation_frequency", args.hz),
+                          ("points_per_second", args.lidar_pps or (300_000 if rover else 1_300_000)),
+                          ("upper_fov", 15), ("lower_fov", -15 if rover else -25), ("sensor_tick", 0.0))
         lid_bp = bp_lib.find("sensor.lidar.ray_cast")
-        for k, v in (("channels", channels), ("range", 100),
-                     ("rotation_frequency", args.hz),
-                     ("points_per_second", args.lidar_pps or (300_000 if rover else 1_300_000)),
-                     ("upper_fov", 15), ("lower_fov", -15 if rover else -25), ("sensor_tick", 0.0)):
+        for k, v in lidar_geometry:
             lid_bp.set_attribute(k, str(v))
+        # CARLA's default dropoff_general_rate 0.45 silently discards 45 % of all returns at
+        # random; a real spinning lidar returns nearly every ray off a solid surface. Range
+        # noise instead (a VLP-16 is specified at +/- 3 cm).
+        lid_bp.set_attribute("dropoff_general_rate", str(args.lidar_dropoff))
+        lid_bp.set_attribute("noise_stddev", str(args.lidar_noise))
+        lid_bp.set_attribute("noise_seed", str(args.seed))
         spawn("lidar", lid_bp, self.mount.carla_transform(FRAME_LIDAR))
+        # Ground-truth twin: same pose and ray pattern, but every point carries the semantic
+        # tag and the actor id it hit. Evaluation only (cloud_eval_node), never a model input.
+        if args.lidar_gt:
+            sem_bp = bp_lib.find("sensor.lidar.ray_cast_semantic")
+            for k, v in lidar_geometry:
+                sem_bp.set_attribute(k, str(v))
+            spawn("lidar_gt", sem_bp, self.mount.carla_transform(FRAME_LIDAR))
 
         # ---------------- IMU / GNSS (CARLA sensors supply truth + gyro/accel noise; the
         # attitude and fix noise models live in sim_sensors.py)
@@ -404,8 +420,11 @@ class CarlaBridge(Node):
             self.ego.apply_control(carla.VehicleControl(brake=1.0, hand_brake=True))
             self.get_logger().info(f"holding the ego still for {self.hold:.0f} s of sim time "
                                    f"so localization starts at the anchor pose")
+        self.crossers = []
         if args.scenario:
             self.spawn_test_scenario(bp_lib)
+        if args.crossing > 0:
+            self.spawn_crossing(bp_lib, args.crossing)
         if args.traffic > 0:
             self.spawn_traffic(bp_lib, spawns, args.traffic)
         if args.pedestrians > 0:
@@ -417,6 +436,7 @@ class CarlaBridge(Node):
         self.start_time = self.world.get_snapshot().timestamp.elapsed_seconds
         self.start_footprint = self.mount.footprint_world(self.ego.get_transform())
         self.publish_static_tf()
+        self.publish_bridge_info(latched, vehicle_id)
         self.camera_info = self.make_camera_info()
         self.fx = self.camera_info.k[0]
         self.cx, self.cy = self.camera_info.k[2], self.camera_info.k[5]
@@ -473,6 +493,54 @@ class CarlaBridge(Node):
         n = self.spawn_walkers(bp_lib, self.args.walkers, speed=self.args.walker_speed,
                                centre=tf.location, radius=35.0)
         self.get_logger().info(f"scenario: cones/boxes at 5/10/20/40 m, parked car, {n} walkers")
+
+    def spawn_crossing(self, bp_lib, count):
+        """Pedestrians pacing across the road ahead of the ego at known distances and speeds.
+
+        No AI controller: each walks a straight line across, turns at +/- half_width, and
+        walks back, so its true position and velocity are known at every tick -- the
+        repeatable case for lidar clustering (Stage 4) and tracking/prediction (Stages 6-7).
+        """
+        tf = self.ego.get_transform()
+        fwd, right = tf.get_forward_vector(), tf.get_right_vector()
+        rig = self.mount.rig_x + self.mount.rear_x if self.mount.rig_x is not None else 0.0
+        walker_bps = [b for b in bp_lib.filter("walker.pedestrian.*")]
+        half = self.args.crossing_width / 2.0
+        for i in range(count):
+            dist = 5.0 + 5.0 * i                               # 5, 10, 15 ... m ahead of the rig
+            side = -1.0 if i % 2 == 0 else 1.0                 # alternate starting side
+            loc = tf.location + fwd * (rig + dist) + right * (side * half)
+            try:
+                lab = self.world.ground_projection(loc + carla.Location(z=3), 10.0)
+                if lab:
+                    loc = lab.location
+            except Exception:
+                pass
+            bp = random.choice(walker_bps)
+            if bp.has_attribute("is_invincible"):
+                bp.set_attribute("is_invincible", "false")
+            w = self.world.try_spawn_actor(bp, carla.Transform(loc + carla.Location(z=1.0)))
+            if not w:
+                self.get_logger().warn(f"could not spawn crossing pedestrian at {dist:.0f} m")
+                continue
+            self.actors.append(w)
+            speed = 0.8 + 0.2 * (i % 4)                        # 0.8 .. 1.4 m/s
+            self.crossers.append({"actor": w, "dir": -side, "speed": speed, "origin": tf.location,
+                                  "right": right, "half": half})
+        self.get_logger().info(f"crossing: {len(self.crossers)} pedestrians pacing across the road "
+                               f"at 5 m steps ahead of the rig")
+
+    def drive_crossers(self):
+        for c in self.crossers:
+            a = c["actor"]
+            off = (a.get_location() - c["origin"]).dot(c["right"])
+            if off > c["half"]:
+                c["dir"] = -1.0
+            elif off < -c["half"]:
+                c["dir"] = 1.0
+            r = c["right"]
+            a.apply_control(carla.WalkerControl(
+                direction=carla.Vector3D(r.x * c["dir"], r.y * c["dir"], 0.0), speed=c["speed"]))
 
     def spawn_walkers(self, bp_lib, count, speed, centre=None, radius=None):
         """AI pedestrians on the navigation mesh. speed=None -> random 1.0-1.6 m/s each."""
@@ -542,6 +610,23 @@ class CarlaBridge(Node):
             xyz, _, _ = carla_tf_to_ros(self.start_footprint)
             tfs.append(st(FRAME_WORLD, FRAME_MAP, xyz))
         self.tf_static.sendTransform(tfs)
+
+    def publish_bridge_info(self, qos, vehicle_id):
+        """Latched description of how this bridge is running, for tools that must refuse a
+        wrong setup (localization_eval_node needs ekf mode) or need the host geometry."""
+        bb = self.ego.bounding_box
+        r = self.mount.rear_x
+        host_box = [bb.location.x - bb.extent.x - r, bb.location.x + bb.extent.x - r,   # base_footprint
+                    -bb.extent.y, bb.extent.y, 0.0, bb.location.z + bb.extent.z]
+        info = {
+            "tf_mode": self.args.tf_mode, "mount": self.args.mount, "vehicle": vehicle_id,
+            "ego_id": self.ego.id, "rig_x": self.mount.rig_x, "host_box_base_footprint": host_box,
+            "hz": self.args.hz, "lidar_gt": bool(self.args.lidar_gt),
+        }
+        self.pub_info_json = self.create_publisher(String, "/carla/bridge_info", qos)
+        self.pub_info_json.publish(String(data=json.dumps(info)))
+        self.get_logger().info(f"host body box in base_footprint [x0 x1 y0 y1 z0 z1]: "
+                               f"{[round(v, 3) for v in host_box]}")
 
     def make_camera_info(self):
         f = self.img_w / (2.0 * math.tan(math.radians(self.fov) / 2.0))
@@ -624,9 +709,13 @@ class CarlaBridge(Node):
         msg.row_step, msg.is_dense = 16 * pts.shape[0], True
         msg.data = array.array("B", pts.tobytes())
         self.pub_pc.publish(msg)
+        if data.get("lidar_gt") is not None:
+            self.publish_semantic_lidar(stamp, data["lidar_gt"])
 
         ego_tf = self.ego.get_transform()
         v_fwd, w_z = self.publish_ego(stamp, ego_tf)
+        if self.crossers:
+            self.drive_crossers()
         if self.odom_model:
             self.publish_wheel_odom(stamp, v_fwd, w_z)
         if self.imu_model and data.get("imu") is not None:
@@ -638,6 +727,26 @@ class CarlaBridge(Node):
         self.publish_ground_truth(frame, sim_t, stamp, actors)
         if self.args.boxes:
             self.publish_boxes_2d(stamp, data["rgb"].transform, rgb, depth, inst_ids, inst_tags, actors)
+
+    SEM_LIDAR_DTYPE = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("cos", "<f4"),
+                                ("obj_idx", "<u4"), ("obj_tag", "<u4")])
+
+    def publish_semantic_lidar(self, stamp, d):
+        """x, y, z, obj_idx (actor id, 0 = scenery), obj_tag (semantic class) in lidar3d_link."""
+        pts = np.frombuffer(d.raw_data, dtype=self.SEM_LIDAR_DTYPE).copy()
+        pts["y"] *= -1.0
+        msg = PointCloud2()
+        msg.header.stamp, msg.header.frame_id = stamp, FRAME_LIDAR
+        msg.height, msg.width = 1, len(pts)
+        msg.fields = [PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+                      PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+                      PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+                      PointField(name="obj_idx", offset=16, datatype=PointField.UINT32, count=1),
+                      PointField(name="obj_tag", offset=20, datatype=PointField.UINT32, count=1)]
+        msg.is_bigendian, msg.point_step = False, 24
+        msg.row_step, msg.is_dense = 24 * len(pts), True
+        msg.data = array.array("B", pts.tobytes())
+        self.pub_pc_gt.publish(msg)
 
     # ------------------------------------------------------------ ego state and robot sensors
     def publish_ego(self, stamp, ego_tf):
@@ -963,6 +1072,11 @@ def parse_args(argv=None):
     s.add_argument("--fov", type=float, default=90.0)
     s.add_argument("--lidar-channels", type=int, default=0, help="0 = 16 (rover) / 64 (car)")
     s.add_argument("--lidar-pps", type=int, default=0, help="0 = 300k (rover) / 1.3M (car)")
+    s.add_argument("--lidar-dropoff", type=float, default=0.0,
+                   help="fraction of returns dropped at random (CARLA's own default is 0.45)")
+    s.add_argument("--lidar-noise", type=float, default=0.015, help="range noise std, m")
+    s.add_argument("--lidar-gt", action=flag, default=True,
+                   help="semantic lidar twin -> /carla/ground_truth/lidar_semantic")
     s.add_argument("--depth", action=flag, default=True, help="publish /carla/camera/depth")
     s.add_argument("--semantic", action=flag, default=True, help="semantic segmentation camera")
     s.add_argument("--instance", action=flag, default=True, help="instance segmentation camera")
@@ -997,6 +1111,9 @@ def parse_args(argv=None):
     w.add_argument("--scenario", action="store_true", help="spawn cones/boxes/parked car/walkers")
     w.add_argument("--walkers", type=int, default=6, help="walkers near the ego in --scenario")
     w.add_argument("--walker-speed", type=float, default=1.0, help="m/s (start slow for tracking)")
+    w.add_argument("--crossing", type=int, default=0,
+                   help="pedestrians pacing across the road at 5, 10, 15 ... m ahead (ego stays put)")
+    w.add_argument("--crossing-width", type=float, default=8.0, help="width they pace across, m")
     w.add_argument("--traffic", type=int, default=0, help="background vehicles on autopilot")
     w.add_argument("--bikes", action=flag, default=False, help="include motorbikes/bicycles in traffic")
     w.add_argument("--pedestrians", type=int, default=0, help="pedestrians walking around the map")

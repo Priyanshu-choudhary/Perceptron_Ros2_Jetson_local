@@ -25,6 +25,8 @@ setup(
         'console_scripts': [
             'lidar_camera_overlay_node = perceptron_perception.lidar_camera_overlay_node:main',
             'projection_check_node = perceptron_perception.projection_check_node:main',
+            'lidar_preprocessor_node = perceptron_perception.lidar_preprocessor_node:main',
+            'cloud_eval_node = perceptron_perception.cloud_eval_node:main',
         ],
     },
 )
