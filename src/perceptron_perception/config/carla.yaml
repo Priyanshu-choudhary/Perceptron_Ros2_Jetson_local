@@ -1,0 +1,21 @@
+# CARLA (Carl_sim/scripts/carla_min_bridge.py). Frame names already match the URDF;
+# only topics differ, and intrinsics come from the bridge's CameraInfo (pinhole, no distortion).
+lidar_camera_overlay_node:
+  ros__parameters:
+    use_sim_time: true
+    image_topic: /carla/camera/image_raw
+    cloud_topic: /carla/lidar/points
+    camera_info_topic: /carla/camera/camera_info
+    max_range: 60.0
+    colour_max_depth: 40.0
+    # 90 deg FOV pinhole: the image corner is r = 1.15, so 2.35 is still a no-op guard here
+    max_radius: 2.35
+
+projection_check_node:
+  ros__parameters:
+    use_sim_time: true
+    depth_topic: /carla/camera/depth
+    cloud_topic: /carla/lidar/points
+    camera_info_topic: /carla/camera/camera_info
+    max_range: 100.0
+    report_period: 5.0

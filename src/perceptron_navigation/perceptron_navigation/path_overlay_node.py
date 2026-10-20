@@ -21,21 +21,9 @@ idea that ROS exists. The wire format below is deliberately dumb for that
 reason: polygons, polylines, circles, labels. Teaching the renderer about paths
 would put robot knowledge on the far side of a link it cannot introspect.
 
-WHY THE CULL IS TWO-STAGE AND NOT JUST Z > 0
-
-The lens is ~115 deg horizontal (fx ~= 411 over 1280 px), and a 5-coefficient
-plumb-bob model is only valid inside the cone it was fitted in. Differentiating
-the radial polynomial with this calibration's coefficients:
-
-    r = 1.76 (image corner)  ->  d/dr [r*(1 + k1 r^2 + k2 r^4 + k3 r^6)] = +1.07
-    r = 3.0  (outside FOV)   ->  the same derivative = -1.29
-
-Past r ~= 2.4 the model folds: points well outside the field of view come back
-with plausible pixel coordinates INSIDE the image. A path sweeping past the
-edge of frame while the robot turns does exactly that, and the symptom is a
-phantom stripe that whips across the picture. Z > 0 does not catch it because
-those points are genuinely in front of the camera, just not in view. So the
-mask is Z > min_z AND r <= max_radius, applied before projectPoints.
+THE PROJECTION ITSELF lives in camera_projection.py, shared with the lidar
+overlay, including why the cull is Z > min_z AND r <= max_radius rather than
+just Z > 0. Only the path-specific parts (runs, ribbons, the wire) are here.
 
 WHY THE TF LOOKUP ASKS FOR THE LATEST TRANSFORM
 
@@ -62,24 +50,12 @@ from nav_msgs.msg import Path
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-import cv2
 import msgpack
 import zmq
 
+from perceptron_navigation import camera_projection as cp
+
 WIRE_VERSION = 1
-
-
-def quaternion_to_rotation(x, y, z, w):
-    """3x3 rotation from a quaternion. Normalised first; TF is not exact."""
-    norm = math.sqrt(x * x + y * y + z * z + w * w)
-    if norm < 1e-12:
-        raise ValueError('zero-length quaternion')
-    x, y, z, w = x / norm, y / norm, z / norm, w / norm
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-    ], dtype=np.float64)
 
 
 def runs_of_true(mask):
@@ -297,37 +273,17 @@ class PathOverlayNode(Node):
                 f'No transform {source_frame} -> {self.camera_optical_frame} '
                 f'({exc}); overlay idle.', throttle_duration_sec=10.0)
             return None
-        q = tf.transform.rotation
-        t = tf.transform.translation
-        M = np.eye(4, dtype=np.float64)
-        M[:3, :3] = quaternion_to_rotation(q.x, q.y, q.z, q.w)
-        M[:3, 3] = (t.x, t.y, t.z)
-        return M
+        return cp.transform_to_matrix(tf)
 
     def _to_optical(self, M, pts):
-        return pts @ M[:3, :3].T + M[:3, 3]
+        return cp.transform_points(M, pts)
 
     def _visible(self, pts_opt):
-        """Two-stage cull. See the module docstring for why r matters."""
-        Z = pts_opt[:, 2]
-        ok = Z > self.min_z
-        if not ok.any():
-            return ok
-        Zs = np.where(ok, Z, 1.0)
-        r = np.hypot(pts_opt[:, 0] / Zs, pts_opt[:, 1] / Zs)
-        ok &= np.isfinite(r) & (r <= self.max_radius)
-        ok &= np.linalg.norm(pts_opt, axis=1) <= self.max_range
-        return ok
+        return cp.visible_mask(pts_opt, self.min_z, self.max_radius, self.max_range)
 
     def _project(self, pts_opt):
         """Optical-frame points -> (N, 2) int pixel coords at calibration size."""
-        if len(pts_opt) == 0:
-            return np.empty((0, 2), dtype=np.int32)
-        uv, _ = cv2.projectPoints(
-            pts_opt.reshape(-1, 1, 3),
-            np.zeros(3), np.zeros(3),
-            self.camera_matrix, self.dist_coeffs)
-        return np.rint(uv.reshape(-1, 2)).astype(np.int32)
+        return cp.project_pixels(pts_opt, self.camera_matrix, self.dist_coeffs)
 
     def _decimate(self, idx):
         """Stride a run down to max_points, always keeping both ends."""
