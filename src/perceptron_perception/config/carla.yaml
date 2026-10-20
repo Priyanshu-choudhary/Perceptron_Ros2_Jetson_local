@@ -38,3 +38,15 @@ lidar_preprocessor_node:
 cloud_eval_node:
   ros__parameters:
     use_sim_time: true
+
+object_fusion_node:
+  ros__parameters:
+    use_sim_time: true
+    # the CARLA reference detector; swap for your own model's Detection2DArray topic
+    detections_topic: /carla/ground_truth/boxes_2d
+    camera_info_topic: /carla/camera/camera_info
+    image_topic: /carla/camera/image_raw
+
+fusion_eval_node:
+  ros__parameters:
+    use_sim_time: true

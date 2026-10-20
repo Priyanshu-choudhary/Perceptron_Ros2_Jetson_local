@@ -27,6 +27,8 @@ setup(
             'projection_check_node = perceptron_perception.projection_check_node:main',
             'lidar_preprocessor_node = perceptron_perception.lidar_preprocessor_node:main',
             'cloud_eval_node = perceptron_perception.cloud_eval_node:main',
+            'object_fusion_node = perceptron_perception.object_fusion_node:main',
+            'fusion_eval_node = perceptron_perception.fusion_eval_node:main',
         ],
     },
 )

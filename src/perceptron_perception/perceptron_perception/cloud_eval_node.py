@@ -25,17 +25,10 @@ from std_msgs.msg import Float32MultiArray, String
 
 from perceptron_navigation import camera_projection as cp
 from perceptron_perception import cloud_eval as ce
+from perceptron_perception import lidar_projection as lp
 
 SEM_DTYPE = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4'), ('cos', '<f4'),
                       ('obj_idx', '<u4'), ('obj_tag', '<u4')])
-
-
-def cloud_fields(msg, names):
-    """Columns by name from a PointCloud2 of float32 fields."""
-    off = {f.name: f.offset for f in msg.fields}
-    dt = np.dtype({'names': names, 'formats': ['<f4'] * len(names),
-                   'offsets': [off[n] for n in names], 'itemsize': msg.point_step})
-    return np.frombuffer(msg.data, dtype=dt, count=msg.width * msg.height)
 
 
 class CloudEvalNode(Node):
@@ -95,8 +88,8 @@ class CloudEvalNode(Node):
             return
         gxyz = cp.transform_points(cp.transform_to_matrix(tf),
                                    np.column_stack([gt['x'], gt['y'], gt['z']]).astype(np.float64))
-        g = cloud_fields(e['ground'], ['x', 'y', 'z'])
-        o = cloud_fields(e['obst'], ['x', 'y', 'z', 'cluster'])
+        g = lp.cloud_fields(e['ground'], ['x', 'y', 'z'])
+        o = lp.cloud_fields(e['obst'], ['x', 'y', 'z', 'cluster'])
         gp = np.column_stack([g['x'], g['y'], g['z']]).astype(np.float64)
         op = np.column_stack([o['x'], o['y'], o['z']]).astype(np.float64)
         args = (gxyz, gt['obj_idx'], gt['obj_tag'], self.tol)

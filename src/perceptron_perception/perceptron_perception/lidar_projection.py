@@ -58,6 +58,14 @@ def cloud_to_xyz(msg):
     return xyz[np.isfinite(xyz).all(axis=1)]
 
 
+def cloud_fields(msg, names):
+    """Named float32 columns of a PointCloud2, as a structured array (no copy)."""
+    off = {f.name: f.offset for f in msg.fields}
+    dt = np.dtype({'names': names, 'formats': ['<f4'] * len(names),
+                   'offsets': [off[n] for n in names], 'itemsize': msg.point_step})
+    return np.frombuffer(msg.data, dtype=dt, count=msg.width * msg.height)
+
+
 def image_to_bgr(msg):
     """sensor_msgs/Image (bgr8, rgb8, bgra8, rgba8, mono8) -> HxWx3 uint8 BGR copy."""
     enc = msg.encoding.lower()
