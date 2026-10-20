@@ -23,6 +23,7 @@ Ground truth (evaluation and training ONLY -- never feed these to the EKF or a m
   /carla/ground_truth/boxes_2d_amodal Detection2DArray, projected 3D box
   /carla/camera/boxes_debug      Image bgr8, /carla/ground_truth MarkerArray
   /carla/ground_truth/lidar_semantic  PointCloud2 x,y,z,obj_idx,obj_tag: same rays as the lidar
+  /carla/ground_truth/objects   perceptron_msgs/TrackedObjectArray, carla_world: true pose + velocity
   /carla/bridge_info             std_msgs/String (latched) JSON: tf_mode, mount, ego_id, host box
   /clock
 
@@ -73,6 +74,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from vision_msgs.msg import (Detection2D, Detection2DArray, Detection3D, Detection3DArray,
                              ObjectHypothesisWithPose)
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
+
+from perceptron_msgs.msg import TrackedObject, TrackedObjectArray
 
 from perceptron_carla import sim_sensors as ss
 
@@ -263,6 +266,7 @@ class CarlaBridge(Node):
         self.pub_gt_ego = self.create_publisher(Odometry, "/carla/ground_truth/ego_odom", 10)
         self.pub_gt = self.create_publisher(MarkerArray, "/carla/ground_truth", 10)
         self.pub_b3 = self.create_publisher(Detection3DArray, "/carla/ground_truth/boxes_3d", 10)
+        self.pub_gt_obj = self.create_publisher(TrackedObjectArray, "/carla/ground_truth/objects", 10)
         self.pub_b2 = self.create_publisher(Detection2DArray, "/carla/ground_truth/boxes_2d", 10)
         self.pub_b2a = self.create_publisher(Detection2DArray, "/carla/ground_truth/boxes_2d_amodal", 10)
         self.pub_labels = self.create_publisher(String, "/carla/camera/semantic_labels", latched)
@@ -716,6 +720,15 @@ class CarlaBridge(Node):
         v_fwd, w_z = self.publish_ego(stamp, ego_tf)
         if self.crossers:
             self.drive_crossers()
+        if self.args.ego_speed > 0 and self.released and not self.args.autopilot:
+            # straight ahead at a set speed: the ego-motion compensation test (static
+            # objects must come out at ~0 m/s in odom while the robot moves)
+            # plain throttle/brake P-controller: CARLA 0.9.15's Ackermann controller crashed
+            # the simulator on the Microlino
+            err = self.args.ego_speed - v_fwd
+            self.ego.apply_control(carla.VehicleControl(
+                throttle=float(min(max(0.5 * err + 0.25, 0.0), 0.6)) if err > -0.1 else 0.0,
+                brake=float(min(-err, 1.0)) if err < -0.3 else 0.0, steer=0.0))
         if self.odom_model:
             self.publish_wheel_odom(stamp, v_fwd, w_z)
         if self.imu_model and data.get("imu") is not None:
@@ -858,6 +871,8 @@ class CarlaBridge(Node):
         ma.markers.append(clear)
         b3 = Detection3DArray()
         b3.header.stamp, b3.header.frame_id = stamp, FRAME_WORLD
+        objs = TrackedObjectArray()
+        objs.header = b3.header
         for a, cls, tf in actors:
             xyz, q, yaw = carla_tf_to_ros(tf)
             v = a.get_velocity()
@@ -892,8 +907,19 @@ class CarlaBridge(Node):
             hyp.pose.pose = d.bbox.center
             d.results.append(hyp)
             b3.detections.append(d)
+
+            # same shape as the tracker's output, with the TRUE velocity (Stage 6 scoring)
+            o = TrackedObject()
+            o.id, o.class_id, o.class_confidence, o.state = a.id, cls, 1.0, TrackedObject.CONFIRMED
+            o.pose.pose = d.bbox.center
+            o.twist.twist.linear.x, o.twist.twist.linear.y, o.twist.twist.linear.z = v.x, -v.y, v.z
+            o.moving = math.hypot(v.x, v.y) > 0.1
+            o.size.x, o.size.y, o.size.z = size
+            o.source_detection_id = str(a.id)
+            objs.objects.append(o)
         self.pub_gt.publish(ma)
         self.pub_b3.publish(b3)
+        self.pub_gt_obj.publish(objs)
 
     # ------------------------------------------------------------ 2D boxes
     def publish_boxes_2d(self, stamp, cam_tf, rgb, depth, inst_ids, inst_tags, actors):
@@ -1062,6 +1088,8 @@ def parse_args(argv=None):
                    help="gt: bridge publishes map->odom->base_footprint from ground truth; "
                         "ekf: leave them to robot_localization (sim_localization.launch.py)")
     g.add_argument("--autopilot", action="store_true", help="ego drives itself (Traffic Manager)")
+    g.add_argument("--ego-speed", type=float, default=0.0,
+                   help="drive straight ahead at this speed, m/s (no autopilot): ego-motion test")
     g.add_argument("--hold-seconds", type=float, default=-1.0,
                    help="sim seconds the ego stays braked at start; -1 = 10 in ekf mode, 0 in gt mode")
     g.add_argument("--ego-speed-diff", type=float, default=30.0,

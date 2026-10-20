@@ -29,6 +29,8 @@ setup(
             'cloud_eval_node = perceptron_perception.cloud_eval_node:main',
             'object_fusion_node = perceptron_perception.object_fusion_node:main',
             'fusion_eval_node = perceptron_perception.fusion_eval_node:main',
+            'object_tracker_node = perceptron_perception.object_tracker_node:main',
+            'tracking_eval_node = perceptron_perception.tracking_eval_node:main',
         ],
     },
 )

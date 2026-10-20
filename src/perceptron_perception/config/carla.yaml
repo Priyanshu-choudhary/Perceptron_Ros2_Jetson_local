@@ -50,3 +50,15 @@ object_fusion_node:
 fusion_eval_node:
   ros__parameters:
     use_sim_time: true
+
+object_tracker_node:
+  ros__parameters:
+    use_sim_time: true
+    tracking_frame: odom
+    vehicle:
+      sigma_a: 1.5        # smoother than the default 3.0: city run 25 -> 20 id switches
+      r_floor: 0.6        # the near-face centroid slides along a car as the view changes
+
+tracking_eval_node:
+  ros__parameters:
+    use_sim_time: true
