@@ -1,4 +1,4 @@
-# CARLA (Carl_sim/scripts/carla_min_bridge.py). Frame names already match the URDF;
+# CARLA (ros2 run perceptron_carla carla_bridge). Frame names already match the URDF;
 # only topics differ, and intrinsics come from the bridge's CameraInfo (pinhole, no distortion).
 lidar_camera_overlay_node:
   ros__parameters:

@@ -1,7 +1,7 @@
 """Lidar-on-camera overlay plus its pixel-error check, against the CARLA bridge.
 
     # Windows: CarlaUE4.exe running.  WSL:
-    python3 carla_min_bridge.py --scenario          # in Carl_sim/scripts
+    ros2 run perceptron_carla carla_bridge --scenario
     ros2 launch perceptron_perception carla_overlay.launch.py
     ros2 launch perceptron_perception carla_overlay.launch.py perturb_yaw_deg:=1.0   # must read ~11 px
 

@@ -1,0 +1,16 @@
+# Loaded AFTER perceptron_navigation/config/dual_ekf_navsat.yaml by sim_localization.launch.py.
+# Only what the simulator genuinely needs differently; everything else is the real robot's config.
+ekf_filter_node_local:
+  ros__parameters:
+    use_sim_time: true
+
+navsat_transform_node:
+  ros__parameters:
+    use_sim_time: true
+    # The sim IMU (carla_bridge) publishes REP-103 orientation: ENU, yaw 0 = east, CCW positive,
+    # so no offset. The real config uses pi/2 for the Pixhack (ArduPilot yaw 0 = north).
+    yaw_offset: 0.0
+
+ekf_filter_node_global:
+  ros__parameters:
+    use_sim_time: true
