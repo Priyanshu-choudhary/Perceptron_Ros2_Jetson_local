@@ -31,6 +31,8 @@ setup(
             'fusion_eval_node = perceptron_perception.fusion_eval_node:main',
             'object_tracker_node = perceptron_perception.object_tracker_node:main',
             'tracking_eval_node = perceptron_perception.tracking_eval_node:main',
+            'trajectory_predictor_node = perceptron_perception.trajectory_predictor_node:main',
+            'prediction_eval_node = perceptron_perception.prediction_eval_node:main',
         ],
     },
 )

@@ -153,6 +153,7 @@ class ObjectTrackerNode(Node):
             tc[3:, 3:] = np.eye(3) * 1e6
             o.twist.covariance = tc.ravel().tolist()
             o.size.x, o.size.y, o.size.z = (float(v) for v in tr.size)
+            o.state_covariance = tr.P.ravel().astype(float).tolist()
             o.age = float(tr.t - tr.t_first)
             o.hits, o.misses = int(tr.hits), int(tr.misses)
             o.source_detection_id = tr.source

@@ -62,3 +62,11 @@ object_tracker_node:
 tracking_eval_node:
   ros__parameters:
     use_sim_time: true
+
+trajectory_predictor_node:
+  ros__parameters:
+    use_sim_time: true
+
+prediction_eval_node:
+  ros__parameters:
+    use_sim_time: true

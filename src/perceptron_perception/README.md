@@ -189,3 +189,60 @@ static test.
   box to the visible faces and track the box centre.
 - **On the EKF**, heading and yaw-rate error rotate the scene. A 0.01 rad/s yaw-rate error makes a car
   20 m away appear to move 0.2 m/s. That accounts for most of the gt → EKF difference.
+
+## Stage 7: trajectory prediction
+
+```bash
+ros2 run perceptron_carla carla_bridge --crossing 6        # or --autopilot --traffic 60 --pedestrians 40 --seed 3
+ros2 launch perceptron_perception carla_prediction.launch.py   # Stages 4-7 + scoring against CARLA's future
+```
+
+`trajectory_predictor_node` → **`/perception/predicted_objects`**
+(`perceptron_msgs/PredictedObjectArray`, odom, stamped with the tracks' time). It holds, per
+confirmed or coasting track:
+- the model used (STATIC / CV / CTRV), with the speed and yaw rate it used
+- footprint `radius`
+- `poses` at **0.5 / 1 / 2 s**, each with 2D covariance
+- a dense `path` every 0.1 s
+
+This is the Stage 8 costmap input. `/perception/prediction_markers` draws the path and 2-sigma
+ellipses (plus the footprint) in RViz. The tracker message gained `state_covariance` (full
+[x, y, vx, vy] covariance) because pose and twist covariance leave out the position-velocity
+cross terms that the uncertainty propagation needs.
+
+Each real-world problem and how it is handled (`prediction.py`):
+
+| Problem | Handling |
+|---|---|
+| **Error amplification** (±0.3 m/s → ±0.6 m at 2 s) | velocity shrunk by its own uncertainty, v·\|v\|²/(\|v\|²+σᵥ²), so a velocity no bigger than its noise is pulled to zero |
+| **Static vs dynamic** | asymmetric hysteresis on the tracker's `moving` flag: dynamic after 1 frame (the tracker already requires speed > 2σ), static again only after 10 quiet frames, so a parked car never creeps |
+| **Uncertainty expansion** | full covariance propagated through the motion model plus white-acceleration process noise, plus a per-class **systematic position floor**. The tracked centre carries a near-face bias the tracker's random-noise covariance can't know about (0.15 m people and props, **1.2 m cars**, measured) |
+| **Physical limits** | per-class speed caps (person 3, car 20 m/s); CTRV turn rate ≤ min(v/R_min, a_lat_max/v); each ellipse capped to the distance the object could physically reach in t |
+| **Turning vehicles** | CTRV from a least-squares heading-rate fit. **Off by default** (`use_ctrv: false`): measured *worse* than CV on CARLA traffic (5.2 vs 4.1 m at 2 s), because car headings from the near-face centroid are too noisy. Turn it on once L-shape fitting gives clean headings |
+
+### Results: error against where CARLA actors really were 0.5 / 1 / 2 s later
+
+`prediction_eval_node` computes two baselines from the same track state:
+- **stay**: assume the object stays put
+- **raw CV**: raw velocity, no gate, shrinkage or caps
+
+| Case | Horizon | **Ours** MAE (p95) | Stay | Raw CV | In 95 % ellipse |
+|---|---|---|---|---|---|
+| walkers, moving (`--crossing 6`, ~8.7 k per horizon) | 0.5 s | **0.18** (0.59) m | 0.48 | 0.17 | **94.8 %** |
+| | 1.0 s | **0.35** (1.27) m | 0.95 | 0.32 | 91.7 % |
+| | 2.0 s | **0.86** (3.02) m | 1.80 | 0.79 | 90.3 % |
+| cars, moving (city, 60 cars, ~1.6 k) | 0.5 s | **1.64** (3.59) m | 4.30 | 1.55 | 92.5 % |
+| | 1.0 s | **2.26** (6.03) m | 7.67 | 2.07 | 87.2 % |
+| | 2.0 s | **3.86** (13.5) m | 14.18 | 3.50 | 87.5 % |
+| cars, stopped | 0.5 / 1 / 2 s | **1.41 / 1.63 / 2.20** m | 1.23 / 1.26 / 1.41 | 1.50 / 1.84 / 2.65 | **98.6 / 97.5 / 94.8 %** |
+| static props, robot moving at 1 m/s | 0.5-2 s | **0.14** m, flat | 0.14 | 0.14-0.15 | (floor added since) |
+
+What the numbers say:
+- **Against "stay"**: 2.7× better for walkers and 3.7× better for moving cars at 2 s.
+- **Against raw CV**: within 5-10 % on moving objects, and **17 % better on stopped cars**, where gating stops them creeping. That trade is the right one for a costmap: phantom motion of parked cars blocks free space all the time, while the moving-object cost is mostly cars pulling away from a stop.
+- **Calibration**: the 95 % ellipses really hold 87-99 % of true positions. That's honest enough for Stage 8 to inflate costs by them; it was 59-89 % before the systematic position floor was added.
+- **Car error starts at about 1.2 m at every horizon.** That's the Stage 6 centroid offset ("stay" on stopped cars). The same L-shape box fitting that would fix Stage 6's car velocity is the biggest single improvement left here too, and it would make CTRV usable.
+
+The crossing walkers reverse instantly at the end of their path. Their "truly static" frames are
+those one-tick reversals, and the 10 % of moving walkers predicted static are tracks right after a
+reversal or at start-up. Real pedestrians decelerate, so this scenario is a pessimistic case.

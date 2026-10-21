@@ -17,3 +17,6 @@ uint32 hits                                   # detections absorbed
 uint32 misses                                 # consecutive frames without one
 string source_detection_id                    # id of the detection used this frame ("" if none);
                                               # passed through for evaluation, never used to track
+float64[16] state_covariance                  # full [x, y, vx, vy] covariance, row-major: the
+                                              # position-velocity cross terms that pose/twist
+                                              # covariance leave out (needed for prediction)
