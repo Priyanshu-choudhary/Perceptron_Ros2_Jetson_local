@@ -246,3 +246,58 @@ What the numbers say:
 The crossing walkers reverse instantly at the end of their path. Their "truly static" frames are
 those one-tick reversals, and the 10 % of moving walkers predicted static are tracks right after a
 reversal or at start-up. Real pedestrians decelerate, so this scenario is a pessimistic case.
+
+## Stage 8: rolling 3D-aware costmap with a dynamic risk layer
+
+```bash
+ros2 run perceptron_carla carla_bridge --autopilot --traffic 40 --pedestrians 80 --no-semantic
+ros2 launch perceptron_perception carla_costmap.launch.py        # Stages 4-8 + scoring
+rviz2 -d $(ros2 pkg prefix perceptron_carla)/share/perceptron_carla/rviz/carla.rviz
+```
+
+`costmap_node` keeps a 40 × 40 m grid in `odom` (0.2 m cells, 5 cm voxel height), centred on
+the robot and shifted by whole cells. It publishes, each stamped with the LiDAR frame it includes:
+
+| Topic | Layer |
+|---|---|
+| `/costmap/voxels` (PointCloud2) | **1: 3D voxels.** Occupied voxel centres; z = height above the ground |
+| `/costmap/obstacles` (OccupancyGrid) | 1 projected to 2D over the robot's height band: 100 / 0 / −1 unknown |
+| `/costmap/inflated` | **2: inflation.** Nav2 convention: lethal, inscribed, exponential fall-off |
+| `/costmap/dynamic_risk` | **3: dynamic risk.** Predicted paths, weighted by time-to-encounter |
+| `/costmap/combined` | max(2, 3): the planner input for Stage 11 |
+| `/costmap/stats` | [ms, voxels, lethal cells, risk cells, moving objects, data age] |
+
+How it works (`costmap.py`):
+- **Voxel log-odds.** Time decay bounds persistence. Rays through a voxel clear it, and so does ground
+  seen in a column with no obstacle in it: from a 0.42 m LiDAR, rays to the road arrive too flat to
+  clear the space a car has just left. Moving objects' points are kept out of the voxel layer, so a
+  walking person leaves no trail.
+- **Height band.** 0.05 m to `max_obstacle_height`: bumps and overhangs are not obstacles.
+- **Dynamic risk.** Gaussians along each predicted path with the Stage 7 covariance at that moment,
+  widened by object + robot radius, weighted by max(near-term, robot-arrives-at-the-same-time).
+  The current footprint is lethal.
+
+The footprint in `config/carla.yaml` is the **Microlino host** that drives in CARLA (inscribed
+0.75 m, inflation 1.8 m). The node defaults are the rover's own Nav2 values (0.21 / 0.6 m,
+scaling 2.5), so on the robot only the input topics change.
+
+### Results (`costmap_eval_node` vs CARLA ground truth)
+
+| | city: 40 cars, 80 people, robot on autopilot | `--crossing 6` (people crossing ahead) |
+|---|---|---|
+| obstacle recall (true footprint under a lethal/inscribed cell) | stopped cars **100 %**, moving cars **99.3 %** | walking **98.9 %**, standing 97.6 % |
+| false obstacles (lethal where the LiDAR saw only ground) | **2.0 %** (7.7 % before ground-column clearing) | **0.95 %**, all sidewalk edges |
+| dynamic risk at the true position 1 s / 2 s later | 50 % / 52 % | **95.0 % / 94.3 %** |
+| flicker (cells toggling lethal per update) | 0.03 % | 0.00 % |
+| update time mean / p95 | 35 / 49 ms | 49 / 54 ms (6 moving people to paint) |
+
+Notes:
+- **Dynamic coverage for cars is about 50 % by design, and limited by prediction error.** Cells the
+  robot can't reach when the car gets there are deliberately weighted down, and Stage 7's car
+  predictions carry the ~1.2 m centroid offset. For people, whose speed is close to the robot's,
+  95 % of true future positions are inside the risk layer.
+- **Unknown space is reported as unknown.** In CARLA the host car hides the area behind the LiDAR,
+  so the map shows unknown there instead of free.
+- **Update time is about the 50 ms tick budget.** About 25-35 ms of it is the voxel ray clearing
+  (numpy). If the robot needs headroom: fewer rays (`max_rays`), 0.25 m cells, or move the
+  ray loop to C++/numba.

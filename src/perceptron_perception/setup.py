@@ -33,6 +33,8 @@ setup(
             'tracking_eval_node = perceptron_perception.tracking_eval_node:main',
             'trajectory_predictor_node = perceptron_perception.trajectory_predictor_node:main',
             'prediction_eval_node = perceptron_perception.prediction_eval_node:main',
+            'costmap_node = perceptron_perception.costmap_node:main',
+            'costmap_eval_node = perceptron_perception.costmap_eval_node:main',
         ],
     },
 )

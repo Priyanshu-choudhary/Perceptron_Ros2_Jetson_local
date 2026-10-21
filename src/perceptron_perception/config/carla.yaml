@@ -70,3 +70,19 @@ trajectory_predictor_node:
 prediction_eval_node:
   ros__parameters:
     use_sim_time: true
+
+costmap_node:
+  ros__parameters:
+    use_sim_time: true
+    # The vehicle driving in CARLA is the Microlino host (2.2 x 1.5 m, 1.4 m tall), so the
+    # footprint is ITS size here; the node defaults are the rover's own nav2 values
+    # (inscribed 0.21 m, inflation 0.6 m, scaling 2.5).
+    inscribed_radius: 0.75
+    inflation_radius: 1.8
+    cost_scaling: 2.0
+    max_obstacle_height: 1.6
+    nominal_speed: 3.0          # autopilot drives the host at ~4-6 m/s
+
+costmap_eval_node:
+  ros__parameters:
+    use_sim_time: true
