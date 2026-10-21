@@ -301,3 +301,32 @@ Notes:
 - **Update time is about the 50 ms tick budget.** About 25-35 ms of it is the voxel ray clearing
   (numpy). If the robot needs headroom: fewer rays (`max_rays`), 0.25 m cells, or move the
   ray loop to C++/numba.
+
+## Road and lane-line map from segmentation (visualisation; input for later planning)
+
+```bash
+ros2 run perceptron_carla carla_bridge --autopilot --traffic 40 --pedestrians 80   # semantic camera ON
+ros2 launch perceptron_perception carla_costmap.launch.py                           # includes it (road:=false to skip)
+```
+
+`road_segmentation_node` turns each road / sidewalk / road-line pixel of `/carla/camera/semantic` into a
+3D point and keeps the latest label per 0.1 m cell of a 40 m rolling grid in `odom`, so the road stays
+painted after it leaves the camera view. It publishes `/perception/road_cloud` (x, y, z, rgb: grey road,
+magenta sidewalk, orange markings) at 5 Hz.
+
+| `projection` | 3D from | Use |
+|---|---|---|
+| `depth` (CARLA default) | the depth image | exact |
+| `ground` | pixel ray meets the ground plane z = 0 of `base_footprint` | the real rover: a segmentation model on its camera, no depth camera needed. Markings are on the ground, so they come out right; a raised kerb lands slightly too far |
+
+All marking pixels are used (they are a few pixels wide at range); road and sidewalk pixels are taken
+every `stride`-th row and column. The class ids are parameters (`road_ids`, `sidewalk_ids`, `line_ids`,
+default CARLA's 1 / 2 / 24), so a Cityscapes-style model needs only those changed.
+
+Measured in CARLA (Town10, autopilot): 9-14 ms per image at 10 Hz, about 45 k road, 8-15 k sidewalk and
+4-10 k marking cells. In both modes the camera's markings land on the lines of CARLA's own map
+(`/carla/map/lanes`), which RViz draws on top (`samples/road_lanes*.png` on the Windows side).
+
+Limits: CARLA has one `road_line` class, so the map can't tell white from yellow or solid from dashed;
+crosswalks and stop lines are also `road_line`. The costmap doesn't use it yet: an off-road cost
+layer built from it is a candidate for Stage 11.

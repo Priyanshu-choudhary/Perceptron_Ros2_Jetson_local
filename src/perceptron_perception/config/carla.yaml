@@ -86,3 +86,8 @@ costmap_node:
 costmap_eval_node:
   ros__parameters:
     use_sim_time: true
+
+road_segmentation_node:
+  ros__parameters:
+    use_sim_time: true
+    projection: depth           # ground: flat-ground ray intersection, as on the real rover

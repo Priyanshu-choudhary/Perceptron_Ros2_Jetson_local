@@ -35,6 +35,7 @@ setup(
             'prediction_eval_node = perceptron_perception.prediction_eval_node:main',
             'costmap_node = perceptron_perception.costmap_node:main',
             'costmap_eval_node = perceptron_perception.costmap_eval_node:main',
+            'road_segmentation_node = perceptron_perception.road_segmentation_node:main',
         ],
     },
 )

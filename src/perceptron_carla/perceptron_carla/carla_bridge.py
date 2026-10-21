@@ -25,6 +25,9 @@ Ground truth (evaluation and training ONLY -- never feed these to the EKF or a m
   /carla/ground_truth/lidar_semantic  PointCloud2 x,y,z,obj_idx,obj_tag: same rays as the lidar
   /carla/ground_truth/objects   perceptron_msgs/TrackedObjectArray, carla_world: true pose + velocity
   /carla/bridge_info             std_msgs/String (latched) JSON: tf_mode, mount, ego_id, host box
+  /carla/map/lanes               MarkerArray (latched), carla_world: lane centres, markings, road edges
+Visualisation
+  /carla/ego_marker              MarkerArray (latched), base_footprint: the host car + sensor rig
   /clock
 
 TF (each transform has exactly one publisher; see README "TF ownership")
@@ -78,6 +81,7 @@ from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 from perceptron_msgs.msg import TrackedObject, TrackedObjectArray
 
 from perceptron_carla import sim_sensors as ss
+from perceptron_carla import viz_markers as vm
 
 # ---------------------------------------------------------------- frames
 FRAME_WORLD = "carla_world"
@@ -208,6 +212,9 @@ class Mount:
         self.front_x = float(vehicle.bounding_box.location.x + vehicle.bounding_box.extent.x)
         self.wheelbase = float(np.mean([p[0] for p in local[:2]]) - self.rear_x)
         self.max_steer_deg = float(wheels[0].max_steer_angle)
+        # base_footprint (ROS axes): x from the rear axle, y left
+        self.wheels = [(float(p[0]) - self.rear_x, -float(p[1]), w.radius / 100.0)
+                       for p, w in zip(local, wheels)]
         self.kind = mount
         if mount == "rover":
             self.rig_x = self.front_x - self.rear_x + RIG_CLEARANCE      # base_footprint frame
@@ -441,6 +448,7 @@ class CarlaBridge(Node):
         self.start_footprint = self.mount.footprint_world(self.ego.get_transform())
         self.publish_static_tf()
         self.publish_bridge_info(latched, vehicle_id)
+        self.publish_markers(latched)
         self.camera_info = self.make_camera_info()
         self.fx = self.camera_info.k[0]
         self.cx, self.cy = self.camera_info.k[2], self.camera_info.k[5]
@@ -620,7 +628,7 @@ class CarlaBridge(Node):
         wrong setup (localization_eval_node needs ekf mode) or need the host geometry."""
         bb = self.ego.bounding_box
         r = self.mount.rear_x
-        host_box = [bb.location.x - bb.extent.x - r, bb.location.x + bb.extent.x - r,   # base_footprint
+        self.host_box = host_box = [bb.location.x - bb.extent.x - r, bb.location.x + bb.extent.x - r,   # base_footprint
                     -bb.extent.y, bb.extent.y, 0.0, bb.location.z + bb.extent.z]
         info = {
             "tf_mode": self.args.tf_mode, "mount": self.args.mount, "vehicle": vehicle_id,
@@ -631,6 +639,26 @@ class CarlaBridge(Node):
         self.pub_info_json.publish(String(data=json.dumps(info)))
         self.get_logger().info(f"host body box in base_footprint [x0 x1 y0 y1 z0 z1]: "
                                f"{[round(v, 3) for v in host_box]}")
+
+    def publish_markers(self, qos):
+        """Latched: the ego car (follows TF) and, unless --no-lane-markers, the map's lanes."""
+        rig = None
+        if self.mount.rig_x is not None:
+            rig = {"x": self.mount.rig_x,
+                   "camera_z": self.mount.sensors[FRAME_CAMERA][2] + BASE_LINK_Z,
+                   "lidar_z": self.mount.sensors[FRAME_LIDAR][2] + BASE_LINK_Z}
+        self.pub_ego_marker = self.create_publisher(MarkerArray, "/carla/ego_marker", qos)
+        self.pub_ego_marker.publish(vm.ego_marker_array(self.host_box, self.mount.wheels, rig, FRAME_FOOTPRINT))
+        if not self.args.lane_markers:
+            return
+        t0 = time.time()
+        lanes = vm.lane_polylines(self.map, step=self.args.lane_step)
+        markers = vm.lane_marker_array(lanes, FRAME_WORLD)
+        self.pub_lanes = self.create_publisher(MarkerArray, "/carla/map/lanes", qos)
+        self.pub_lanes.publish(markers)
+        self.get_logger().info(f"lane map: {len(lanes)} lanes, "
+                               f"{sum(len(m.points) // 2 for m in markers.markers)} segments "
+                               f"({time.time() - t0:.1f} s) -> /carla/map/lanes")
 
     def make_camera_info(self):
         f = self.img_w / (2.0 * math.tan(math.radians(self.fov) / 2.0))
@@ -1146,6 +1174,9 @@ def parse_args(argv=None):
     w.add_argument("--bikes", action=flag, default=False, help="include motorbikes/bicycles in traffic")
     w.add_argument("--pedestrians", type=int, default=0, help="pedestrians walking around the map")
     w.add_argument("--seed", type=int, default=7)
+    w.add_argument("--lane-markers", action=flag, default=True,
+                   help="publish the map's lane lines on /carla/map/lanes (ground truth, RViz)")
+    w.add_argument("--lane-step", type=float, default=1.5, help="lane line sampling, m")
     w.add_argument("--log-dir", default=os.path.expanduser("~/carla_logs"))
     return p.parse_args(argv)
 

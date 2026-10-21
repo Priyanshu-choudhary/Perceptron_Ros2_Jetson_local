@@ -202,6 +202,19 @@ distance from the world origin while the bridge and the EKF fight over `odom →
 rviz2 -d $(ros2 pkg prefix perceptron_carla)/share/perceptron_carla/rviz/carla.rviz
 ```
 
+## RViz: lane lines and the ego car
+
+* **`/carla/map/lanes`** (latched MarkerArray, `carla_world`): lane lines from CARLA's OpenDRIVE map, published
+  once at start-up. Cyan: lane centre lines (fainter inside junctions); white / yellow: painted markings,
+  solid or dashed, doubles drawn as two lines; grey: road edges with no paint. This is ground truth from the
+  map; the rover has no such map, and its camera-based equivalent is `road_segmentation_node`
+  (perceptron_perception). `--no-lane-markers` turns it off, and `--lane-step` sets the sampling (1.5 m).
+* **`/carla/ego_marker`** (latched MarkerArray, `base_footprint`, frame-locked so it follows TF): the host car as
+  primitives, built from its real bounding box and wheel positions (body, glass bubble, wheels, headlights,
+  heading arrow), plus the rover sensor rig (mast, camera, LiDAR) at its true height.
+
+Both are in the RViz preset as *Lane lines (CARLA map)* and *Ego car*, subscribed Transient Local.
+
 ## Other outputs (ground truth for perception)
 
 Depth, semantic and instance segmentation, 2D visible/amodal and 3D boxes, box debug image,
