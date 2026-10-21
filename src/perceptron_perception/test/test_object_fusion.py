@@ -113,3 +113,28 @@ def test_fusion_scores():
     assert ped['coverage_pct'] == 100.0 and ped['correct_pct'] == 100.0
     assert abs(ped['range_bias'] - 0.2) < 1e-9
     assert car['coverage_pct'] == 50.0 and car['no_points_pct'] == 50.0 and car['correct_pct'] == 0.0
+
+
+def test_size_gate_refuses_the_wall_behind_an_unhit_pedestrian():
+    wall = strip(25.0, 3.0, -3.0)                 # building face 25 m away, behind the person
+    labels = np.zeros(len(wall), int)
+    box = box_px(10.0, 0.3, -0.3, 0.0, 1.75)      # 1.75 m person at 10 m: no lidar points on it
+    uv, depth, idx = of.project(wall, OPT_FROM_BASE, K, NO_DIST, W, H, min_z=0.1, max_radius=3.0)
+    bound = of.max_depth_from_box(box, 'pedestrian', F)
+    assert 10.0 < bound < 25.0
+    got, how = of.associate([box], uv, depth, idx, labels, min_affinity=0.0, max_depth=[bound])
+    assert len(got[0]) == 0 and how == [None]
+    loose, how = of.associate([box], uv, depth, idx, np.full(len(wall), -1), max_depth=[bound])
+    assert len(loose[0]) == 0                     # nor through the loose-point fallback
+    got, _ = of.associate([box], uv, depth, idx, labels, min_affinity=0.0)
+    assert len(got[0])                            # without the gate the wall is taken
+
+
+def test_size_gate_keeps_the_pedestrian_and_ignores_other_classes():
+    ped = strip(10.0, 0.25, -0.25)
+    box = box_px(10.0, 0.3, -0.3, 0.0, 1.75)
+    uv, depth, idx = of.project(ped, OPT_FROM_BASE, K, NO_DIST, W, H, min_z=0.1, max_radius=3.0)
+    bound = of.max_depth_from_box(box, 'pedestrian', F)
+    got, how = of.associate([box], uv, depth, idx, np.zeros(len(ped), int), max_depth=[bound])
+    assert len(got[0]) == len(ped) and how == ['cluster']
+    assert of.max_depth_from_box(box, 'car', F) is None

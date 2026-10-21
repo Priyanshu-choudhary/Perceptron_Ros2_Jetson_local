@@ -26,6 +26,7 @@ from std_msgs.msg import String
 from vision_msgs.msg import Detection3DArray
 
 from perceptron_navigation import camera_projection as cp
+from perceptron_perception import eval_report as er
 from perceptron_perception import cloud_eval as ce
 from perceptron_perception import fusion_eval as fe
 from perceptron_perception import lidar_projection as lp
@@ -41,6 +42,7 @@ class FusionEvalNode(Node):
         self.declare_parameter('camera_frame', 'camera_optical_link')
         self.declare_parameter('world_frame', 'carla_world')
         self.declare_parameter('report_period', 10.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.camera_frame, self.world = p('camera_frame'), p('world_frame')
         self.period, self.total = fe.FusionScores(), fe.FusionScores()
@@ -125,6 +127,7 @@ class FusionEvalNode(Node):
             s.add(boxes, objects, truth)
 
     def _report(self):
+        self._write_summary()
         if not self.period.frames:
             self.get_logger().warn('nothing scored yet: needs carla_bridge (--lidar-gt, --boxes), the Stage 4 '
                                    'preprocessor and object_fusion_node', throttle_duration_sec=30.0)
@@ -134,10 +137,16 @@ class FusionEvalNode(Node):
         self.period = fe.FusionScores()
 
     def destroy_node(self):
+        self._write_summary()
         if self.total.frames:
             self.get_logger().info('\n' + fe.format_summary(self.total.summary(), 'FINAL object fusion (%d frames)'
                                                             % self.total.frames))
         return super().destroy_node()
+
+    def _write_summary(self):
+        path = self.get_parameter('summary_file').value
+        if path and self.total.frames:
+            er.write_json(path, {'node': self.get_name(), 'summary': self.total.summary()})
 
 
 def main(args=None):

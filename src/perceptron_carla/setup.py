@@ -27,6 +27,7 @@ setup(
             'carla_bridge = perceptron_carla.carla_bridge:main',
             'localization_eval_node = perceptron_carla.localization_eval_node:main',
             'sensor_check = perceptron_carla.sensor_check:main',
+            'scenario_suite = perceptron_carla.scenario_suite:main',
         ],
     },
 )

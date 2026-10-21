@@ -17,9 +17,9 @@ from perceptron_perception.costmap import _shift
 
 NONE, ROAD, SIDEWALK, LINE = 0, 1, 2, 3
 LABEL_NAMES = {ROAD: 'road', SIDEWALK: 'sidewalk', LINE: 'road_line'}
-# RViz colours (r, g, b): asphalt grey, kerb magenta (Cityscapes sidewalk), marking orange
+# RViz colours (r, g, b): drivable road green, kerb magenta (Cityscapes sidewalk), marking orange
 # (not white / yellow, so they stand apart from the CARLA map's lane lines drawn over them)
-LABEL_RGB = {ROAD: (85, 85, 95), SIDEWALK: (200, 60, 200), LINE: (255, 140, 20)}
+LABEL_RGB = {ROAD: (40, 170, 70), SIDEWALK: (200, 60, 200), LINE: (255, 140, 20)}
 
 # CARLA 0.9.15 semantic tags
 CARLA_IDS = {ROAD: (1,), SIDEWALK: (2,), LINE: (24,)}

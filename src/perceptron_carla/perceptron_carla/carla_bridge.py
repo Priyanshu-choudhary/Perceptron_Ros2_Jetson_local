@@ -432,6 +432,10 @@ class CarlaBridge(Node):
             self.get_logger().info(f"holding the ego still for {self.hold:.0f} s of sim time "
                                    f"so localization starts at the anchor pose")
         self.crossers = []
+        self.dropouts = parse_dropouts(args.dropout)
+        if self.dropouts:
+            self.get_logger().info("sensor dropouts (sim s after start): " + ", ".join(
+                f"{k} {a:.0f}-{b:.0f} s" for k, a, b in self.dropouts))
         if args.scenario:
             self.spawn_test_scenario(bp_lib)
         if args.crossing > 0:
@@ -467,6 +471,12 @@ class CarlaBridge(Node):
         if self.args.autopilot:
             self.ego.set_autopilot(True, self.args.tm_port)
             self.tm.vehicle_percentage_speed_difference(self.ego, self.args.ego_speed_diff)
+            if self.args.route:
+                # Traffic Manager takes these turns at the next junctions, in order: the
+                # repeatable "turns" scenario instead of whatever the random route gives
+                route = [r.strip().capitalize() for r in self.args.route.split(",") if r.strip()]
+                self.tm.set_route(self.ego, route)
+                self.get_logger().info(f"ego route at the next junctions: {route}")
         self.released = True
 
     # ------------------------------------------------------------ spawning
@@ -484,9 +494,9 @@ class CarlaBridge(Node):
                 pass
             return loc
 
-        def place(bp_name, dist, lateral, yaw_off=0.0):
+        def place(bp_name, dist, lateral, yaw_off=0.0, lift=0.0):
             loc = tf.location + fwd * dist + right * lateral
-            loc = ground(loc)
+            loc = ground(loc) + carla.Location(z=lift)   # a vehicle at exactly ground height collides
             t = carla.Transform(loc, carla.Rotation(yaw=tf.rotation.yaw + yaw_off))
             a = self.world.try_spawn_actor(bp_lib.find(bp_name), t)
             if a:
@@ -498,9 +508,12 @@ class CarlaBridge(Node):
         for d in (5, 10, 20, 40):
             place("static.prop.trafficcone01", d, -1.5)
             place("static.prop.box01", d, 1.5)
-        car = place("vehicle.tesla.model3", 15, 3.5)
-        if car:
-            car.set_simulate_physics(False)   # parked, never moves
+        car = None
+        for dist, lateral in ((15, 3.5), (15, -3.5), (12, 3.5), (18, 3.5), (12, -3.5), (18, -3.5)):
+            car = place("vehicle.tesla.model3", dist, lateral, lift=0.3)      # first free spot
+            if car:
+                car.set_simulate_physics(False)   # parked, never moves
+                break
 
         n = self.spawn_walkers(bp_lib, self.args.walkers, speed=self.args.walker_speed,
                                centre=tf.location, radius=35.0)
@@ -518,8 +531,32 @@ class CarlaBridge(Node):
         rig = self.mount.rig_x + self.mount.rear_x if self.mount.rig_x is not None else 0.0
         walker_bps = [b for b in bp_lib.filter("walker.pedestrian.*")]
         half = self.args.crossing_width / 2.0
+        first = 5.0
+        if self.args.occluder:
+            # A van parked on the left 6 m ahead hides the left half of the crossings at 10 m
+            # and beyond: pedestrians step out from behind it (the occlusion case). Crossings
+            # then start at 10 m so nobody walks through it.
+            first = 10.0
+            loc = tf.location + fwd * (rig + 6.0) - right * 2.5
+            try:
+                lab = self.world.ground_projection(loc + carla.Location(z=3), 10.0)
+                if lab:
+                    loc = lab.location
+            except Exception:
+                pass
+            for name in ("vehicle.mercedes.sprinter", "vehicle.volkswagen.t2", "vehicle.tesla.model3"):
+                bps = bp_lib.filter(name)
+                van = self.world.try_spawn_actor(bps[0], carla.Transform(
+                    loc + carla.Location(z=0.3), tf.rotation)) if bps else None
+                if van:
+                    van.set_simulate_physics(False)
+                    self.actors.append(van)
+                    self.get_logger().info(f"occluder: {name} parked 6 m ahead, 2.5 m left")
+                    break
+            else:
+                self.get_logger().warn("could not spawn the occluder")
         for i in range(count):
-            dist = 5.0 + 5.0 * i                               # 5, 10, 15 ... m ahead of the rig
+            dist = first + 5.0 * i                             # 5 (10 with --occluder), +5 ... m ahead
             side = -1.0 if i % 2 == 0 else 1.0                 # alternate starting side
             loc = tf.location + fwd * (rig + dist) + right * (side * half)
             try:
@@ -692,14 +729,19 @@ class CarlaBridge(Node):
             self.get_logger().warn(f"frame {frame}: sensor data missing")
             return
         h, w = self.img_h, self.img_w
+        # --dropout: the sensor goes silent (its data is still read, so the queues stay in
+        # step); ground truth keeps flowing, so the evaluators see what the stack missed
+        drop = {k for k, a, b in self.dropouts if a <= sim_t - self.start_time < b}
+        cam_on = "camera" not in drop
 
         def bgra(d):
             return np.frombuffer(d.raw_data, dtype=np.uint8).reshape(h, w, 4)
 
         rgb = np.ascontiguousarray(bgra(data["rgb"])[:, :, :3])
-        self.pub_img.publish(make_image(stamp, rgb, "bgr8"))
-        self.camera_info.header.stamp = stamp
-        self.pub_info.publish(self.camera_info)
+        if cam_on:
+            self.pub_img.publish(make_image(stamp, rgb, "bgr8"))
+            self.camera_info.header.stamp = stamp
+            self.pub_info.publish(self.camera_info)
 
         # depth: CARLA packs normalised depth into R + G*256 + B*65536 over 1000 m
         depth = None
@@ -708,11 +750,11 @@ class CarlaBridge(Node):
             # astype: uint8 * 256.0 promotes to float64, and 32FC1 must be 4 bytes per pixel
             depth = ((d[:, :, 2].astype(np.float32) + d[:, :, 1] * 256.0 + d[:, :, 0] * 65536.0)
                      * (1000.0 / 16777215.0)).astype(np.float32)
-            if self.args.depth:
+            if self.args.depth and cam_on:
                 self.pub_depth.publish(make_image(stamp, depth, "32FC1"))
 
         # semantic: class id in R. Read the ids before convert(), which rewrites the buffer.
-        if data.get("semantic") is not None:
+        if data.get("semantic") is not None and cam_on:
             sem = data["semantic"]
             ids = bgra(sem)[:, :, 2].copy()
             self.pub_sem.publish(make_image(stamp, ids, "mono8"))
@@ -740,7 +782,8 @@ class CarlaBridge(Node):
         msg.is_bigendian, msg.point_step = False, 16
         msg.row_step, msg.is_dense = 16 * pts.shape[0], True
         msg.data = array.array("B", pts.tobytes())
-        self.pub_pc.publish(msg)
+        if "lidar" not in drop:
+            self.pub_pc.publish(msg)
         if data.get("lidar_gt") is not None:
             self.publish_semantic_lidar(stamp, data["lidar_gt"])
 
@@ -759,14 +802,14 @@ class CarlaBridge(Node):
                 brake=float(min(-err, 1.0)) if err < -0.3 else 0.0, steer=0.0))
         if self.odom_model:
             self.publish_wheel_odom(stamp, v_fwd, w_z)
-        if self.imu_model and data.get("imu") is not None:
+        if self.imu_model and data.get("imu") is not None and "imu" not in drop:
             self.publish_imu(stamp, data["imu"])
         if self.gnss_model:
-            self.publish_gnss()
+            self.publish_gnss(silent="gnss" in drop)
 
         actors = self.gt_actors()
         self.publish_ground_truth(frame, sim_t, stamp, actors)
-        if self.args.boxes:
+        if self.args.boxes and cam_on:           # the stand-in detector runs on the camera
             self.publish_boxes_2d(stamp, data["rgb"].transform, rgb, depth, inst_ids, inst_tags, actors)
 
     SEM_LIDAR_DTYPE = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("cos", "<f4"),
@@ -857,7 +900,7 @@ class CarlaBridge(Node):
                                             0.0, 0.0, IMU_ACCEL_COV]
         self.pub_imu.publish(m)
 
-    def publish_gnss(self):
+    def publish_gnss(self, silent=False):
         """GNSS ticks at --gnss-hz, slower than the world, so drain whatever has arrived."""
         q = self.queues["gnss"]
         while True:
@@ -865,6 +908,8 @@ class CarlaBridge(Node):
                 d = q.get_nowait()
             except queue.Empty:
                 return
+            if silent:
+                continue
             # CARLA's own geo-reference puts Town10 at lat 0, lon 0: the equator AND the UTM
             # zone 30/31 boundary, where navsat_transform's UTM conversion jumps as the car
             # crosses it. Re-anchor at --gnss-origin: carla_world is ENU, so x is east, y north.
@@ -1093,6 +1138,21 @@ class CarlaBridge(Node):
                 pass
 
 
+DROPOUT_SENSORS = ("lidar", "camera", "imu", "gnss")
+
+
+def parse_dropouts(spec):
+    """"lidar:20:2,camera:35:1.5" -> [("lidar", 20.0, 22.0), ("camera", 35.0, 36.5)]: that
+    sensor is silent from 20 s to 22 s of sim time after start-up."""
+    out = []
+    for item in filter(None, (spec or "").split(",")):
+        name, start, dur = item.split(":")
+        if name not in DROPOUT_SENSORS:
+            raise ValueError(f"--dropout: unknown sensor {name!r}, expected one of {DROPOUT_SENSORS}")
+        out.append((name, float(start), float(start) + float(dur)))
+    return out
+
+
 def windows_host():
     """Windows host IP as seen from WSL2 (NAT mode) = default gateway."""
     out = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True).stdout
@@ -1174,6 +1234,12 @@ def parse_args(argv=None):
     w.add_argument("--bikes", action=flag, default=False, help="include motorbikes/bicycles in traffic")
     w.add_argument("--pedestrians", type=int, default=0, help="pedestrians walking around the map")
     w.add_argument("--seed", type=int, default=7)
+    w.add_argument("--occluder", action="store_true",
+                   help="with --crossing: a van parked 6 m ahead hides the left side of the crossings")
+    w.add_argument("--route", default="",
+                   help="with --autopilot: turns at the next junctions, e.g. Left,Right,Straight")
+    w.add_argument("--dropout", default="",
+                   help="silence sensors: name:start_s:duration_s,... (lidar, camera, imu, gnss)")
     w.add_argument("--lane-markers", action=flag, default=True,
                    help="publish the map's lane lines on /carla/map/lanes (ground truth, RViz)")
     w.add_argument("--lane-step", type=float, default=1.5, help="lane line sampling, m")

@@ -17,6 +17,7 @@ from rclpy.time import Time
 
 from perceptron_msgs.msg import PredictedObjectArray, TrackedObject, TrackedObjectArray
 from perceptron_navigation import camera_projection as cp
+from perceptron_perception import eval_report as er
 from perceptron_perception import prediction_eval as pe
 from perceptron_perception import tracking_eval as te
 
@@ -28,6 +29,7 @@ class PredictionEvalNode(Node):
         self.declare_parameter('world_frame', 'carla_world')
         self.declare_parameter('horizons', [0.5, 1.0, 2.0])
         self.declare_parameter('report_period', 15.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.world = p('world_frame')
         self.horizons = [float(h) for h in p('horizons')]
@@ -106,6 +108,7 @@ class PredictionEvalNode(Node):
         self.scores.add_predictions(t, items)
 
     def _report(self):
+        self._write_summary()
         s = self.scores.summary()
         if not s:
             self.get_logger().warn('nothing scored yet (predictions need %.1f s of future truth)'
@@ -114,6 +117,15 @@ class PredictionEvalNode(Node):
         self.get_logger().info('\n' + pe.format_summary(s, self.scores.models, 'prediction vs future ground truth, '
                                                         'since start') +
                                '\n' + pe.format_by_model(self.scores.by_model, self.horizons[-1]))
+
+    def _write_summary(self):
+        path = self.get_parameter('summary_file').value
+        if path and self.scores.summary():
+            er.write_json(path, {'node': self.get_name(), 'summary': self.scores.summary()})
+
+    def destroy_node(self):
+        self._write_summary()
+        return super().destroy_node()
 
 
 def main(args=None):

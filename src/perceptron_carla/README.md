@@ -221,6 +221,97 @@ Depth, semantic and instance segmentation, 2D visible/amodal and 3D boxes, box d
 markers, per-actor CSV: see the module docstring of `carla_bridge.py`. Detection id = CARLA actor
 id everywhere. CARLA's instance ids are not actor ids, so the bridge matches them geometrically.
 
+## Stage 9: scenario suite and regression checks
+
+One command runs every subsystem against fixed, seeded CARLA scenes and says PASS or FAIL per metric,
+so a change that makes things worse shows up as a FAIL row, not as a hunch about RViz.
+
+```bash
+# Windows: CarlaUE4.exe running.  WSL, nothing else running:
+ros2 run perceptron_carla scenario_suite                    # all 7 scenarios, ~18 min
+ros2 run perceptron_carla scenario_suite crossing city      # some of them
+ros2 run perceptron_carla scenario_suite --list             # what each one is
+ros2 run perceptron_carla scenario_suite --bag full         # bags with lidar + camera too (large)
+```
+
+For each scenario the runner (`scenario_suite.py`):
+1. starts `carla_bridge` with the scenario's seeded arguments, writing the ground-truth CSV into the run directory;
+2. starts the stack and its evaluators (`launch/scenario_stack.launch.py`), and `ros2 bag record`;
+3. warms up for 8 sim s, then scores the scenario's duration: topic rates (sim time), real-time factor,
+   whether every node is still alive, and outputs in the last 10 s;
+4. stops the bag, the stack and the bridge in that order, so the bag and the JSON files are complete;
+5. reads each evaluator's since-start summary (`<evaluator>.json`; every `*_eval_node` now has a
+   `summary_file` parameter) and checks the metrics against the scenario's limits (`scenarios.py`).
+
+Output: `~/carla_runs/suite_<time>/report.md` (all scenarios), `results.json`, and per scenario
+`metrics.json`, `bridge.log`, `stack.log`, `gt_*.csv`, `bag/` (light set, ~1 MB/s: TF, odometry, IMU, GNSS,
+ground-truth objects and boxes, perception objects / tracks / predictions, costmap). The exit code is 1 if
+any scenario fails.
+
+| Scenario | Scene | Stack | Checks |
+|---|---|---|---|
+| `static_props` | cones and boxes at 5-40 m, a parked car; ego drives past at 1 m/s | perception | static stays static while the robot moves, range, costmap |
+| `crossing` | 6 pedestrians pacing across 5-30 m ahead, 0.8-1.4 m/s | perception | pedestrian range, tracking, 2 s prediction, dynamic risk |
+| `occluded_crossing` | a van parked 6 m ahead on the left; 4 pedestrians step out from behind it | perception | tracking through occlusion, id switches, recall |
+| `city` | autopilot, 40 cars, 80 pedestrians | perception | ground, car range, moving-car velocity, costmap, timing |
+| `turns` | autopilot forced through Left, Right, Left, Right, Left at the next junctions | perception | ego-motion while turning: static cars stay static, flicker |
+| `dropout` | city traffic; lidar silent 2 s at 30 s, camera 2 s at 50 s | perception | every node survives, outputs resume, costmap recall |
+| `localization` | Stage 3 EKFs with the fixes on; autopilot, 10 cars | localization | global position and heading error |
+
+New bridge options behind them: `--route Left,Right,...` (Traffic Manager turns at the next junctions),
+`--dropout lidar:30:2,camera:50:2` (silence a sensor; ground truth keeps flowing so the evaluators see what
+was missed), `--occluder` (with `--crossing`: the parked van). The `--scenario` parked car now tries six spots
+and is lifted 0.3 m: at exactly ground height it never spawned.
+
+**The limits** are the reference run below with a margin: a PASS means "no worse than when the limit was
+set", not "good enough for the road". After a deliberate change that moves a number, update its limit in
+`scenarios.py` and say why in the commit.
+
+### Reference run (all PASS, 2026-10-21, `~/carla_runs/suite_reference`)
+
+| Scenario | Key results |
+|---|---|
+| `static_props` | cones/boxes range MAE 0.24 m; static props' velocity 0.02 m/s while the ego drives; parked car 100 %, props 88 % covered by lethal cells; false obstacles 1.4 %; flicker 0.02 % |
+| `crossing` | pedestrians: 82 % of boxes get a range, 99 % of them the right points, range MAE 0.15 m; tracking 0.09 m / 0.15 m/s; 2 s prediction 0.88 m, 95 % ellipse holds 90 %; costmap recall 99.2 %, dynamic risk holds 94 % of true positions 2 s ahead |
+| `occluded_crossing` | through the van's occlusion: tracking 0.12 m, 0.2 id switches per 100 actor-frames; recall 97.5 %; dynamic risk 77 % at 2 s (people appearing from behind the van have no history yet) |
+| `city` | ground precision / recall 95.5 / 99.8 %; car range MAE 1.27 m (far cars, see Stage 5); moving-car velocity 1.2 m/s; costmap recall 99.1 % moving / 100 % stopped; false obstacles 1.8 %; 45 ms p95 |
+| `turns` | static cars' velocity 0.58 m/s while the ego turns; costmap recall 100 %; flicker 0.02 % |
+| `dropout` | every node alive, outputs back after both dropouts, moving-car recall 100 % |
+| `localization` | global RMSE 1.96 m (max 3.6 m) over 480 m, heading 2.0°; local EKF 3.9 m RMSE, 0.1 % drift |
+
+**Repeatable.** The perception scenarios give the same numbers on every run with the same code: the city
+run's ground precision, car range error and costmap recall matched to three decimals across three runs.
+The global EKF is the exception (RMSE 0.56 / 0.56 / 1.96 m over three runs), because navsat_transform
+takes its datum from whichever messages arrive first. Its limit is 3 m RMSE and 5 m maximum.
+
+**Wall time** about 14 minutes for all seven. The city runs at 0.47× real time with 120 actors; the rest at 0.6-0.85×.
+Light bags total about 1 GB.
+
+### What the suite found
+
+1. **Sidewalk pedestrians get almost no LiDAR hits, and fusion gave them the wall's range.** In the city
+   run the LiDAR put at least 3 points on a pedestrian in only 23 actor-frames, all at 20-40 m, out of about 2,800
+   camera boxes. The 16-beam LiDAR is pitched 15° down with its top beam level at 0.42 m, so beyond a few
+   metres only that beam reaches. A pedestrian on a raised sidewalk shows it 0.27 m of shin, often behind
+   the kerb. Fusion still found points in those boxes, the building or parked car behind, and reported
+   their range: 0-3 % correct, 12-17 m too far. *Fix:* a size gate in `object_fusion.py`. A pedestrian box
+   h px tall cannot be farther than about fy·1.95 m / h, so clusters and loose points beyond that are
+   refused. Wrong pedestrian ranges fell from 17 % of boxes with a 12.4 m error to 11 % with a 6.8 m error.
+   The crossing results are unchanged (99 % correct). What remains are objects at about the person's own
+   depth, which no size test can separate.
+   **For the rover:** in a city the camera is effectively the only pedestrian sensor beyond a few metres.
+   Options: less LiDAR pitch, a monocular range from the box (size or ground contact) with a wide covariance, or
+   a second, level LiDAR.
+2. **The `--scenario` parked car never spawned.** It was placed exactly at ground height, which CARLA
+   rejects as a collision. It is now lifted 0.3 m and tries six spots.
+3. **Limits set from first guesses were wrong in the strict direction.** Ground precision is 95.5-97.4 % in
+   every scene (Stage 4 measured 0.96-0.97), not ≥ 97 %, and the city's far cars make the car range MAE 1.27 m.
+   The limits now come from the measured values.
+4. **Not regressions, but visible in the numbers:** "static" pedestrians in the crossing scenes
+   (`prediction.pedestrian_static.*`, `tracking.pedestrian.v_static_mae` ≈ 1 m/s) are the walkers turning
+   round at the kerb, where the true speed passes through 0 while the track still carries the old velocity.
+   City pedestrian prediction and dynamic risk can't be scored, because there are no tracks to score.
+
 ## Commands
 
 ```bash

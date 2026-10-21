@@ -4,7 +4,7 @@
     /carla/camera/semantic (mono8 class ids) + /carla/camera/depth (32FC1, optional)
     + /carla/camera/camera_info + TF
       -> /perception/road_cloud   PointCloud2 x, y, z, rgb in odom: the rolling map of the
-                                  latest label per 0.1 m cell (grey road, magenta sidewalk,
+                                  latest label per 0.1 m cell (green road, magenta sidewalk,
                                   orange markings)
       -> /perception/road_stats   Float32MultiArray [ms, road, sidewalk, line cells]
 

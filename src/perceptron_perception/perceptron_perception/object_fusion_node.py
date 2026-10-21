@@ -70,6 +70,8 @@ class ObjectFusionNode(Node):
         d('box_shrink', 0.05)
         d('join_depth', 2.5)
         d('fallback_min_points', 2)
+        d('size_gate', True)                   # refuse points farther than a pedestrian box allows
+        d('size_gate_factor', 1.15)
         d('min_score', 0.0)
         d('sync_slop', 0.05)
         p = lambda n: self.get_parameter(n).value    # noqa: E731
@@ -80,6 +82,8 @@ class ObjectFusionNode(Node):
         self.assoc = dict(min_affinity=float(p('min_affinity')), shrink=float(p('box_shrink')),
                           join_depth=float(p('join_depth')), fallback_min_points=int(p('fallback_min_points')))
         self.min_score = float(p('min_score'))
+        self.size_gate = bool(p('size_gate'))
+        self.size_gate_factor = float(p('size_gate_factor'))
 
         self.camera_info = None
         if p('camera_info_topic'):
@@ -145,7 +149,9 @@ class ObjectFusionNode(Node):
         boxes = [(dd.bbox.center.position.x - dd.bbox.size_x / 2, dd.bbox.center.position.y - dd.bbox.size_y / 2,
                   dd.bbox.center.position.x + dd.bbox.size_x / 2, dd.bbox.center.position.y + dd.bbox.size_y / 2)
                  for dd in keep]
-        groups, how = of.associate(boxes, uv, depth, idx, labels, **self.assoc)
+        max_depth = [of.max_depth_from_box(b, dd.results[0].hypothesis.class_id, K[1, 1], self.size_gate_factor)
+                     if self.size_gate else None for b, dd in zip(boxes, keep)]
+        groups, how = of.associate(boxes, uv, depth, idx, labels, max_depth=max_depth, **self.assoc)
 
         stamp = cloud.header.stamp
         header = cloud.header

@@ -43,6 +43,7 @@ class LocalizationEvalNode(Node):
         self.declare_parameter('estimate_topics', ['/odometry/local', '/odometry/global'])
         self.declare_parameter('world_frame', 'carla_world')
         self.declare_parameter('report_period', 10.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         self.declare_parameter('log_dir', os.path.expanduser('~/carla_logs'))
 
         p = self.get_parameter
@@ -147,6 +148,14 @@ class LocalizationEvalNode(Node):
                         w.writerow(header)
                     w.writerow([topic] + [summ[k] for k in header[1:]])
         os.replace(tmp, self.csv_path)       # atomic: a Ctrl-C mid-write keeps the last good file
+        summary_file = self.get_parameter('summary_file').value
+        if summary_file:
+            data = {'node': self.get_name(), 'tf_mode': self.bridge_mode,
+                    'summary': {topic: st.summary() for topic, st in self.total.items()}}
+            tmp = summary_file + '.tmp'
+            with open(tmp, 'w') as f:
+                json.dump(data, f, indent=1, default=float)
+            os.replace(tmp, summary_file)
         return lines
 
     def destroy_node(self):

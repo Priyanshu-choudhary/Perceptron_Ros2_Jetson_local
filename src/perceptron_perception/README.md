@@ -311,7 +311,7 @@ ros2 launch perceptron_perception carla_costmap.launch.py                       
 
 `road_segmentation_node` turns each road / sidewalk / road-line pixel of `/carla/camera/semantic` into a
 3D point and keeps the latest label per 0.1 m cell of a 40 m rolling grid in `odom`, so the road stays
-painted after it leaves the camera view. It publishes `/perception/road_cloud` (x, y, z, rgb: grey road,
+painted after it leaves the camera view. It publishes `/perception/road_cloud` (x, y, z, rgb: green road,
 magenta sidewalk, orange markings) at 5 Hz.
 
 | `projection` | 3D from | Use |
@@ -330,3 +330,14 @@ Measured in CARLA (Town10, autopilot): 9-14 ms per image at 10 Hz, about 45 k ro
 Limits: CARLA has one `road_line` class, so the map can't tell white from yellow or solid from dashed;
 crosswalks and stop lines are also `road_line`. The costmap doesn't use it yet: an off-road cost
 layer built from it is a candidate for Stage 11.
+
+## Stage 9 change to Stage 5: size gate for pedestrian boxes
+
+The Stage 9 city scenario showed that sidewalk pedestrians are almost never hit by the rover LiDAR (top
+beam level at 0.42 m, the rest pitched down), yet fusion gave 17 % of their boxes a range: the wall or
+parked car behind them, 12 m too far on average. `object_fusion.associate` now takes a per-box `max_depth`.
+For a pedestrian box h px tall it is `size_gate_factor (1.15) · fy · 1.95 m / h + 0.5 m` (the deepest a
+person can be and still look that tall). Clusters and loose points beyond it are refused, so the box
+gets no range instead of a wrong one. Results: wrong ranges 17 % → 11 % of boxes, their error 12.4 m →
+6.8 m. The crossing scenes are unchanged (99 % correct, MAE 0.15 m). Other classes get no gate. Turn it
+off with `size_gate: false`. See perceptron_carla's README, Stage 9.

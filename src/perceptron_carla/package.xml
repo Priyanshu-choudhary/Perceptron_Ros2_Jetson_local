@@ -19,6 +19,9 @@
   <depend>perceptron_navigation</depend>
   <depend>perceptron_msgs</depend>
   <exec_depend>robot_localization</exec_depend>
+  <exec_depend>perceptron_perception</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosbag2_storage_default_plugins</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <!-- The carla 0.9.15 Python client comes from pip (see README), it is not a rosdep key. -->

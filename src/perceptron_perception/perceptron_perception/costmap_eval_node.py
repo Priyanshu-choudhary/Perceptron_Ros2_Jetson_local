@@ -24,6 +24,7 @@ from std_msgs.msg import Float32MultiArray, String
 
 from perceptron_msgs.msg import TrackedObjectArray
 from perceptron_navigation import camera_projection as cp
+from perceptron_perception import eval_report as er
 from perceptron_perception import cloud_eval as ce
 from perceptron_perception import costmap_eval as ke
 from perceptron_perception.tracker import class_group
@@ -41,6 +42,7 @@ class CostmapEvalNode(Node):
         self.declare_parameter('robot_frame', 'base_footprint')
         self.declare_parameter('range', 20.0)
         self.declare_parameter('report_period', 15.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.world, self.robot_frame, self.range = p('world_frame'), p('robot_frame'), float(p('range'))
         self.scores = ke.CostmapScores()
@@ -169,11 +171,21 @@ class CostmapEvalNode(Node):
         self.prev_obst = cur
 
     def _report(self):
+        self._write_summary()
         if not self.scores.frames:
             self.get_logger().warn('nothing scored yet: needs carla_bridge (--lidar-gt) and costmap_node',
                                    throttle_duration_sec=30.0)
             return
         self.get_logger().info('\n' + ke.format_summary(self.scores.summary(), 'costmap vs ground truth, since start'))
+
+    def _write_summary(self):
+        path = self.get_parameter('summary_file').value
+        if path and self.scores.frames:
+            er.write_json(path, {'node': self.get_name(), 'summary': self.scores.summary()})
+
+    def destroy_node(self):
+        self._write_summary()
+        return super().destroy_node()
 
 
 def main(args=None):

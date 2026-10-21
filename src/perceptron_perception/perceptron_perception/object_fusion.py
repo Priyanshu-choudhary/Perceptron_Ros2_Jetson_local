@@ -32,6 +32,15 @@ back to the loose points inside it: the nearest depth group of at least
 fallback_min_points, split where consecutive depths jump by more than
 depth_gap.
 
+SIZE GATE: NOT THE WALL BEHIND
+A pedestrian the lidar does not hit (often, from 0.42 m up on a city sidewalk) still has
+points in its box: the building or parked car behind it. Taken as the person, they put it
+10-20 m too far (Stage 9 city run: 0-3 % of such ranges correct). A class with a bounded
+height cannot be farther than its box height allows, depth <= fy * H_max / box_height, so
+clusters and loose points beyond that bound (with slack, max_depth_from_box) are refused
+and the box gets no range instead of a wrong one. A box cut short by occlusion or the
+image edge only loosens the bound, never tightens it.
+
 RANGE IS TO THE NEAREST SURFACE
 
 The lidar only sees the near side of an object, so the centroid of its points
@@ -64,6 +73,19 @@ def shrink_box(box, shrink):
     return x0 + dx, y0, x1 - dx, y1
 
 
+# tallest plausible member of a class (m); classes not listed get no size gate
+CLASS_HEIGHT_MAX = {'pedestrian': 1.95}
+
+
+def max_depth_from_box(box, cls, fy, factor=1.15, margin=0.5):
+    """Largest optical depth an object of class `cls` can have and still be `box` tall."""
+    H = CLASS_HEIGHT_MAX.get(cls)
+    h = box[3] - box[1]
+    if H is None or h < 2.0:
+        return None
+    return factor * fy * H / h + margin
+
+
 def _hiou(a0, a1, b0, b1):
     inter = max(0.0, min(a1, b1) - max(a0, b0))
     union = max(a1, b1) - min(a0, b0)
@@ -71,13 +93,16 @@ def _hiou(a0, a1, b0, b1):
 
 
 def associate(boxes, uv, depth, idx, labels, min_affinity=0.2, shrink=0.05,
-              fallback_min_points=2, depth_gap=1.0, min_span_px=4.0, join_share=0.8, join_depth=2.5):
+              fallback_min_points=2, depth_gap=1.0, min_span_px=4.0, join_share=0.8, join_depth=2.5,
+              max_depth=None):
     """Point indices (into the full cloud) for each box; empty array when nothing fits.
 
     boxes   list of (x0, y0, x1, y1) in pixels
     uv, depth, idx   from project(); labels: cluster label per FULL-cloud point, -1 = none
+    max_depth        per box, the size gate's bound (None = no bound); see the module doc
     """
     nb = len(boxes)
+    limit = [np.inf if m is None else m for m in (max_depth or [None] * nb)]
     out = [np.zeros(0, dtype=np.int64) for _ in range(nb)]
     if nb == 0 or len(idx) == 0:
         return out, [None] * nb
@@ -98,9 +123,10 @@ def associate(boxes, uv, depth, idx, labels, min_affinity=0.2, shrink=0.05,
             mid = (c0 + c1) / 2.0
             c0, c1 = mid - min_span_px / 2.0, mid + min_span_px / 2.0
         best, best_aff = -1, min_affinity
+        d_med = float(np.median(depth[sel]))
         for i, (x0, _, x1, _) in enumerate(sboxes):
             n_in = int((in_box[i] & sel).sum())
-            if n_in == 0:
+            if n_in == 0 or d_med > limit[i]:
                 continue
             aff = _hiou(c0, c1, x0, x1) * n_in / sel.sum()
             if aff > best_aff:
@@ -122,13 +148,14 @@ def associate(boxes, uv, depth, idx, labels, min_affinity=0.2, shrink=0.05,
         if len(holders) != 1 or not main_depth[holders[0]]:
             continue
         i = holders[0]
-        if abs(float(np.median(depth[sel])) - min(main_depth[i])) <= join_depth:
+        d_med = float(np.median(depth[sel]))
+        if abs(d_med - min(main_depth[i])) <= join_depth and d_med <= limit[i]:
             out[i] = np.concatenate([out[i], np.flatnonzero(labels == c)])
 
     for i in range(nb):
         if len(out[i]) or how[i] is not None:
             continue
-        sel = in_box[i] & (lab < 0)
+        sel = in_box[i] & (lab < 0) & (depth <= limit[i])
         if sel.sum() < fallback_min_points:
             continue
         d = depth[sel]

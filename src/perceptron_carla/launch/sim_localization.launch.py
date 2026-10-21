@@ -78,7 +78,8 @@ def _nodes(context):
     if arg('eval').lower() == 'true':
         nodes.append(Node(package='perceptron_carla', executable='localization_eval_node',
                           name='localization_eval_node', output='screen',
-                          parameters=[sim_time, {'report_period': float(arg('report_period'))}]))
+                          parameters=[sim_time, {'report_period': float(arg('report_period')),
+                                                 'summary_file': arg('summary_file')}]))
     return nodes
 
 
@@ -89,6 +90,8 @@ def generate_launch_description():
         DeclareLaunchArgument('eval', default_value='true', description='run localization_eval_node'),
         DeclareLaunchArgument('report_period', default_value='30.0',
                               description='evaluator report period, sim seconds'),
+        DeclareLaunchArgument('summary_file', default_value='',
+                              description='evaluator JSON summary (the Stage 9 scenario suite)'),
         DeclareLaunchArgument('fixes', default_value='false',
                               description='true applies the three Stage 3 launch/config fixes'),
         OpaqueFunction(function=_nodes),

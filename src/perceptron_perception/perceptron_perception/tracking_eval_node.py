@@ -18,6 +18,7 @@ from rclpy.time import Time
 
 from perceptron_msgs.msg import TrackedObject, TrackedObjectArray
 from perceptron_navigation import camera_projection as cp
+from perceptron_perception import eval_report as er
 from perceptron_perception import tracking_eval as te
 
 
@@ -27,6 +28,7 @@ class TrackingEvalNode(Node):
         super().__init__('tracking_eval_node')
         self.declare_parameter('world_frame', 'carla_world')
         self.declare_parameter('report_period', 10.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.world = p('world_frame')
         self.period, self.total = te.TrackingScores(), te.TrackingScores()
@@ -82,6 +84,7 @@ class TrackingEvalNode(Node):
             s.add(tracks, truth)
 
     def _report(self):
+        self._write_summary()
         if not self.period.frames:
             self.get_logger().warn('nothing scored yet: needs carla_bridge, carla_tracking.launch.py',
                                    throttle_duration_sec=30.0)
@@ -89,6 +92,15 @@ class TrackingEvalNode(Node):
         self.get_logger().info('\n' + te.format_summary(self.period.summary(), 'tracking, last period') +
                                '\n' + te.format_summary(self.total.summary(), 'tracking, since start'))
         self.period = te.TrackingScores()
+
+    def _write_summary(self):
+        path = self.get_parameter('summary_file').value
+        if path and self.total.frames:
+            er.write_json(path, {'node': self.get_name(), 'summary': self.total.summary()})
+
+    def destroy_node(self):
+        self._write_summary()
+        return super().destroy_node()
 
 
 def main(args=None):

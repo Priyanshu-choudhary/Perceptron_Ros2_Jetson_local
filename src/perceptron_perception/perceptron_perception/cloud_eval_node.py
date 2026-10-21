@@ -24,6 +24,7 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32MultiArray, String
 
 from perceptron_navigation import camera_projection as cp
+from perceptron_perception import eval_report as er
 from perceptron_perception import cloud_eval as ce
 from perceptron_perception import lidar_projection as lp
 
@@ -39,6 +40,7 @@ class CloudEvalNode(Node):
         self.declare_parameter('match_tolerance', 0.1)
         self.declare_parameter('min_hits', 3)
         self.declare_parameter('report_period', 10.0)
+        self.declare_parameter('summary_file', '')       # JSON for the scenario suite
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.tol = float(p('match_tolerance'))
         self.min_hits = int(p('min_hits'))
@@ -111,6 +113,7 @@ class CloudEvalNode(Node):
                 'lidar extrinsic is right)' % (np.nanmedian(a[:, 6]), np.nanmedian(a[:, 7]))]
 
     def _report(self):
+        self._write_summary()
         if self.period.frames == 0:
             self.get_logger().warn('nothing evaluated yet: need the bridge (with --lidar-gt) and '
                                    'lidar_preprocessor_node', throttle_duration_sec=30.0)
@@ -122,10 +125,16 @@ class CloudEvalNode(Node):
         self.stats = []
 
     def destroy_node(self):
+        self._write_summary()
         if self.total.frames:
             self.get_logger().info('\n' + ce.format_summary(
                 self.total.summary(), 'FINAL lidar preprocessing (%d frames)' % self.total.frames))
         return super().destroy_node()
+
+    def _write_summary(self):
+        path = self.get_parameter('summary_file').value
+        if path and self.total.frames:
+            er.write_json(path, {'node': self.get_name(), 'summary': self.total.summary()})
 
 
 def main(args=None):
