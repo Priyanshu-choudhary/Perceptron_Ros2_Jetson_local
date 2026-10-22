@@ -25,6 +25,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
+from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
 from std_msgs.msg import Float32MultiArray
 
@@ -45,7 +46,7 @@ class RoadSegmentationNode(Node):
         d('global_frame', 'odom')
         d('robot_frame', 'base_footprint')
         d('road_ids', [1])                     # CARLA 0.9.15 tags
-        d('sidewalk_ids', [2])
+        d('sidewalk_ids', [2, 9, 10, 25])      # off-road: sidewalk, vegetation, terrain, ground
         d('line_ids', [24])
         d('stride', 4)                         # road / sidewalk pixel subsampling
         d('max_range', 25.0)
@@ -54,12 +55,17 @@ class RoadSegmentationNode(Node):
         d('memory', 60.0)                      # s a cell keeps its label unseen
         d('max_rate', 10.0)                    # Hz of images used
         d('publish_period', 0.2)
+        d('cost_resolution', 0.2)              # /perception/road_costmap, for Nav2
+        d('min_votes', 3)
+        d('min_blob', 4)
+        d('max_height', 0.5)                   # m above the robot's ground: tree crowns are not off-road
         p = lambda n: self.get_parameter(n).value    # noqa: E731
         self.frame, self.robot_frame = p('global_frame'), p('robot_frame')
         self.use_depth = p('projection') == 'depth'
         self.class_ids = {rs.ROAD: list(p('road_ids')), rs.SIDEWALK: list(p('sidewalk_ids')),
                           rs.LINE: list(p('line_ids'))}
         self.stride, self.max_range = int(p('stride')), float(p('max_range'))
+        self.max_height = float(p('max_height'))
         self.min_dt = 1.0 / float(p('max_rate'))
         self.map = rs.RoadMap(size=float(p('size')), res=float(p('resolution')), memory=float(p('memory')))
         self.K = None
@@ -78,6 +84,9 @@ class RoadSegmentationNode(Node):
             self.create_subscription(Image, p('semantic_topic'), lambda m: self._enqueue(m, None), qos)
         self.pub = self.create_publisher(PointCloud2, '/perception/road_cloud', 2)
         self.pub_stats = self.create_publisher(Float32MultiArray, '/perception/road_stats', 10)
+        self.pub_cost = self.create_publisher(OccupancyGrid, '/perception/road_costmap', 1)
+        self.cost_kw = dict(out_res=float(p('cost_resolution')), min_votes=int(p('min_votes')),
+                            min_blob=int(p('min_blob')))
         self.create_timer(0.01, self._drain)
         self.create_timer(float(p('publish_period')), self._publish)
         self.create_timer(10.0, self._report)
@@ -130,6 +139,8 @@ class RoadSegmentationNode(Node):
             pts, ok = rs.ground_intersect(u.astype(float), v.astype(float), self.K, M_base_opt)
             ok &= np.hypot(pts[:, 0] - M_base_opt[0, 3], pts[:, 1] - M_base_opt[1, 3]) < self.max_range
             xyz, lab = cp.transform_points(robot, pts[ok]), lab[ok]
+        near_ground = np.abs(xyz[:, 2] - robot[2, 3]) < self.max_height
+        xyz, lab = xyz[near_ground], lab[near_ground]
         self.map.recenter(robot[:2, 3])
         self.map.insert(xyz, lab, t)
         self.map.expire(t)
@@ -151,6 +162,16 @@ class RoadSegmentationNode(Node):
         m.is_bigendian, m.point_step, m.row_step, m.is_dense = False, 16, 16 * len(buf), True
         m.data = array.array('B', buf.tobytes())
         self.pub.publish(m)
+        occ = self.map.cost_grid(**self.cost_kw)
+        g = OccupancyGrid()
+        g.header.stamp, g.header.frame_id = self.stamp, self.frame
+        g.info.map_load_time = self.stamp
+        g.info.resolution = self.cost_kw['out_res']
+        g.info.height, g.info.width = occ.shape
+        g.info.origin.position.x, g.info.origin.position.y = float(self.map.origin[0]), float(self.map.origin[1])
+        g.info.origin.orientation.w = 1.0
+        g.data = array.array('b', occ.ravel().tobytes())
+        self.pub_cost.publish(g)
         c = self.map.counts()
         self.pub_stats.publish(Float32MultiArray(data=[
             float(self.times[-1]) if self.times else 0.0,

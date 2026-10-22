@@ -21,8 +21,12 @@ LABEL_NAMES = {ROAD: 'road', SIDEWALK: 'sidewalk', LINE: 'road_line'}
 # (not white / yellow, so they stand apart from the CARLA map's lane lines drawn over them)
 LABEL_RGB = {ROAD: (40, 170, 70), SIDEWALK: (200, 60, 200), LINE: (255, 140, 20)}
 
-# CARLA 0.9.15 semantic tags
-CARLA_IDS = {ROAD: (1,), SIDEWALK: (2,), LINE: (24,)}
+# CARLA 0.9.15 semantic tags; SIDEWALK stands for everything off the road
+CARLA_IDS = {ROAD: (1,), SIDEWALK: (2, 9, 10, 25), LINE: (24,)}   # + vegetation, terrain, ground
+
+# Nav2 cost per label, as OccupancyGrid values (Nav2 cost = value * 254 / 100):
+# road 0, lane marking 30 (crossable, avoided), off-road 254 (lethal); unseen = 0 (free)
+ROAD_COST_OCC = {ROAD: 0, LINE: 12, SIDEWALK: 100}
 
 
 def label_image(ids, class_ids):
@@ -70,6 +74,7 @@ class RoadMap:
         self.label = np.zeros((self.nx, self.ny), np.uint8)
         self.z = np.zeros((self.nx, self.ny), np.float32)
         self.seen = np.full((self.nx, self.ny), -np.inf)
+        self.off_votes = np.zeros((self.nx, self.ny), np.uint8)   # frames in a row seen off-road
 
     def recenter(self, robot_xy):
         half = self.nx * self.res / 2.0
@@ -83,6 +88,7 @@ class RoadMap:
         self.label = _shift(self.label, shift, NONE)
         self.z = _shift(self.z, shift, 0.0)
         self.seen = _shift(self.seen, shift, -np.inf)
+        self.off_votes = _shift(self.off_votes, shift, 0)
         self.origin = self.origin + shift * self.res
 
     def insert(self, xyz, labels, t):
@@ -102,11 +108,35 @@ class RoadMap:
         cnt = np.bincount(flat, minlength=self.nx * self.ny)
         self.z.ravel()[cells] = (zsum[cells] / cnt[cells]).astype(np.float32)
         self.seen.ravel()[cells] = t
+        v = self.off_votes.ravel()
+        off = best[cells] == SIDEWALK
+        v[cells[off]] = np.minimum(v[cells[off]].astype(np.int16) + 1, 255).astype(np.uint8)
+        v[cells[~off]] = 0
 
     def expire(self, t):
         old = (t - self.seen) > self.memory
         self.label[old] = NONE
         self.seen[old] = -np.inf
+        self.off_votes[old] = 0
+
+    def cost_grid(self, out_res=0.2, min_votes=3, min_blob=4):
+        """OccupancyGrid values (int8, [ny_out, nx_out], rows along y) at out_res: the highest
+        cost in each block. Off-road is lethal only after `min_votes` frames in a row and in
+        blobs of >= `min_blob` cells, so one mislabelled frame or a speck cannot wall in the robot."""
+        from scipy import ndimage
+        occ = np.zeros((self.nx, self.ny), np.int8)
+        occ[self.label == LINE] = ROAD_COST_OCC[LINE]
+        occ[(self.label == SIDEWALK) & (self.off_votes >= min_votes)] = ROAD_COST_OCC[SIDEWALK]
+        k = max(1, int(round(out_res / self.res)))
+        n = self.nx // k
+        occ = occ[:n * k, :n * k].reshape(n, k, n, k).max(axis=(1, 3))
+        lethal = occ >= 100
+        lab, nlab = ndimage.label(lethal)
+        if nlab:
+            sizes = ndimage.sum(lethal, lab, range(1, nlab + 1))
+            small = np.isin(lab, np.flatnonzero(sizes < min_blob) + 1)
+            occ[small] = 0
+        return occ.T.copy()
 
     def points(self, labels=(ROAD, SIDEWALK, LINE)):
         """(xyz (M, 3) cell centres at their ground height, label (M,)) of labelled cells."""

@@ -40,8 +40,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('perception', default_value='true',
                               description='start Stages 4-8 (preprocessor ... costmap_node)'),
-        DeclareLaunchArgument('road', default_value='false',
-                              description='also the road map (needs the semantic camera)'),
+        DeclareLaunchArgument('road', default_value='true',
+                              description='vision road layer (needs the bridge without --no-semantic)'),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(perception),
                                  launch_arguments={'eval': 'false', 'road': LaunchConfiguration('road')}.items(),
                                  condition=IfCondition(LaunchConfiguration('perception'))),

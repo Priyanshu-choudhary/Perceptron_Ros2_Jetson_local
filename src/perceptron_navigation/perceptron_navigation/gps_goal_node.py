@@ -108,6 +108,10 @@ class GpsGoalNode(Node):
         M = self._M(self.map_frame, self.robot_frame)
         return M[0, 3], M[1, 3]
 
+    def _robot_yaw(self):
+        M = self._M(self.map_frame, self.robot_frame)
+        return math.atan2(M[1, 0], M[0, 0])
+
     def latlon_to_map(self, lat, lon):
         e, n = geo.latlon_to_enu(lat, lon, *self.datum)
         M = self._M(self.map_frame, self.datum_frame)
@@ -143,7 +147,7 @@ class GpsGoalNode(Node):
             if g is None:
                 self.get_logger().warn('no road graph yet: straight route')
             else:
-                pts = g.route(start, goal)
+                pts = g.route(start, goal, heading=self._robot_yaw())
                 if pts is not None:
                     return pts
                 self.get_logger().warn('goal not connected to the robot by road: straight route')

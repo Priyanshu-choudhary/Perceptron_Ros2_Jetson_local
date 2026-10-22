@@ -211,6 +211,14 @@ class Monitor(Node):
         return False
 
 
+def semantic_args(spec):
+    """Navigation runs keep the segmentation camera (vision road layer), except with --crossing:
+    CARLA 0.9.15 froze ~20 s into every crossing run with the segmentation camera on."""
+    if spec['stack'] == 'navigation' and '--crossing' not in spec['bridge']:
+        return []
+    return ['--no-semantic']
+
+
 def start(cmd, log_path):
     log = open(log_path, 'w')
     return subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True), log
@@ -251,7 +259,7 @@ def run_scenario(mon, name, out, args):
     print('\n=== %s: %s\n    bridge %s, scoring %.0f sim s' % (name, spec['about'], spec['bridge'], duration))
 
     bridge_cmd = ['ros2', 'run', 'perceptron_carla', 'carla_bridge'] + spec['bridge'].split() + \
-        ['--no-semantic', '--log-dir', d]
+        semantic_args(spec) + ['--log-dir', d]
     mon.reset()
     bridge, blog = start(bridge_cmd, os.path.join(d, 'bridge.log'))
     stack = slog = bag = baglog = None

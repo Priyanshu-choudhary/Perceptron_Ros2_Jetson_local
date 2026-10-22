@@ -97,13 +97,20 @@ local_costmap:
       # Microlino body (host box -0.26..1.94 m) + the sensor rig at its nose, in base_footprint (rear axle)
       footprint: "[[-0.30, -0.80], [-0.30, 0.80], [2.10, 0.80], [2.10, -0.80]]"
       footprint_padding: 0.05
-      plugins: ["perception_layer", "inflation_layer"]
+      plugins: ["perception_layer", "road_layer", "inflation_layer"]
       perception_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_topic: /costmap/nav
         map_subscribe_transient_local: false
         subscribe_to_updates: false
         trinary_costmap: false
+      road_layer:                            # vision: road 0, lane line 30, off-road lethal
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: /perception/road_costmap
+        map_subscribe_transient_local: false
+        subscribe_to_updates: false
+        trinary_costmap: false
+        use_maximum: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 1.8
@@ -130,13 +137,20 @@ global_costmap:
       always_send_full_costmap: true
       footprint: "[[-0.30, -0.80], [-0.30, 0.80], [2.10, 0.80], [2.10, -0.80]]"
       footprint_padding: 0.05
-      plugins: ["perception_layer", "inflation_layer"]
+      plugins: ["perception_layer", "road_layer", "inflation_layer"]
       perception_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_topic: /costmap/nav
         map_subscribe_transient_local: false
         subscribe_to_updates: false
         trinary_costmap: false
+      road_layer:                            # vision: road 0, lane line 30, off-road lethal
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: /perception/road_costmap
+        map_subscribe_transient_local: false
+        subscribe_to_updates: false
+        trinary_costmap: false
+        use_maximum: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 1.8

@@ -144,10 +144,20 @@ class RoadGraph:
         k = int(np.argmin(d))
         return k, float(d[k])
 
-    def route(self, start_xy, goal_xy):
-        """[start, ...graph points..., goal] or None when the two are not connected."""
+    def route(self, start_xy, goal_xy, heading=None, ahead=(2.0, 15.0)):
+        """[start, ...graph points..., goal] or None when the two are not connected.
+        With `heading` (rad), the route starts at the nearest graph point 2-15 m AHEAD of the
+        robot: a car whose road is walled by lethal kerbs cannot U-turn on the spot, so it goes
+        round the block instead."""
         from scipy.sparse.csgraph import dijkstra
         s, _ = self.nearest(start_xy)
+        if heading is not None:
+            rel = self.p - np.asarray(start_xy, dtype=float)
+            fwd = rel @ (math.cos(heading), math.sin(heading))
+            d = np.linalg.norm(rel, axis=1)
+            ok = np.flatnonzero((fwd > ahead[0]) & (d < ahead[1]) & (np.abs(fwd) > 0.7 * d))
+            if len(ok):
+                s = int(ok[np.argmin(d[ok])])
         g, _ = self.nearest(goal_xy)
         dist, pred = dijkstra(self.adj, directed=False, indices=s, return_predecessors=True)
         if not np.isfinite(dist[g]):

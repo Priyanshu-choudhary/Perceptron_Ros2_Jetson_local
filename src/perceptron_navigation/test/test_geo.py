@@ -74,3 +74,11 @@ def test_lane_change_edges_avoid_the_junction_detour():
     assert max(x for x, _ in r) < 25
     r = geo.RoadGraph([lower, link, upper], lane_change=0).route((0.0, 0.0), (20.0, 3.5))
     assert max(x for x, _ in r) > 99                 # without lane changes: the long way round
+
+
+def test_route_starts_ahead_of_the_robot_instead_of_u_turning():
+    road = [(float(x), 0.0) for x in range(-50, 51, 2)]
+    g = geo.RoadGraph([road])
+    r = g.route((0.0, 0.0), (-30.0, 0.0), heading=0.0)
+    assert r[1][0] > 1.0                       # first graph point is ahead (here: back again)
+    assert g.route((0.0, 0.0), (-30.0, 0.0))[1][0] == 0.0

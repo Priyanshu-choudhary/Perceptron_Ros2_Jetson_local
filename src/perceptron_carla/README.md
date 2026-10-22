@@ -432,3 +432,23 @@ ros2 run perceptron_carla carla_bridge --traffic 40 --pedestrians 60 --autopilot
 ros2 launch perceptron_perception carla_overlay.launch.py                        # lidar overlay + check
 ros2 run perceptron_carla sensor_check
 ```
+
+## Vision road layer in the Nav2 costmap
+
+`road_segmentation_node` also publishes `/perception/road_costmap` (0.2 m, odom): road 0, lane marking 30
+(Nav2 cost; OccupancyGrid 12), off-road (sidewalk, terrain, vegetation, ground) 254. Off-road is lethal only
+after 3 frames in a row and in blobs of at least 4 cells. Only labelled points within 0.5 m of ground level
+count: without that, tree crowns over the road painted it lethal. Both Nav2 costmaps read it as `road_layer`
+(StaticLayer, maximum with the obstacle layer). `carla_nav.launch.py` starts it (`road:=false` to skip).
+The bridge must run **without** `--no-semantic`.
+
+Road routes now start at the nearest road point 2-15 m *ahead* of the car. With lethal kerbs a car can't
+U-turn on the spot, so it goes round the block instead.
+
+Results (2026-10-22): `nav_open` (road layer) PASS, 139 m in 59 s; `nav_cars` (road layer) PASS, 59 s;
+`nav_people` PASS; all with 0 collisions. Open:
+- CARLA 0.9.15 froze about 20 s into every `--crossing` run with the segmentation camera on, so the crossing
+  scenarios run without it (no road layer there).
+- `nav_mixed` didn't reach its goal in 320 s (0 collisions) after the route-start change; not investigated.
+- The long-range route still comes from CARLA's lane graph (the stand-in for OpenStreetMap). The
+  segmentation is CARLA's ground truth, not a model yet.

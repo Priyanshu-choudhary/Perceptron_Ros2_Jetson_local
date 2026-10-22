@@ -54,3 +54,20 @@ def test_packed_rgb_round_trip():
     f = rs.packed_rgb(np.array([rs.LINE], np.uint8))
     r, g, b = rs.LABEL_RGB[rs.LINE]
     assert f.view(np.uint32)[0] == (r << 16) | (g << 8) | b
+
+
+def test_cost_grid_votes_and_specks():
+    m = rs.RoadMap(size=4.0, res=0.1)
+    m.recenter((0.0, 0.0))
+    xs, ys = np.meshgrid(np.arange(-1.95, 1.95, 0.1), np.arange(-1.95, 1.95, 0.1))
+    pts = np.column_stack([xs.ravel(), ys.ravel(), np.zeros(xs.size)])
+    lab = np.where(pts[:, 1] > 1.0, rs.SIDEWALK, np.where(np.abs(pts[:, 1]) < 0.1, rs.LINE, rs.ROAD)).astype(np.uint8)
+    lab[0] = rs.SIDEWALK                                   # a one-cell mislabel on the road
+    m.insert(pts, lab, 0.0)
+    assert (m.cost_grid() >= 100).sum() == 0               # one frame: no lethal yet
+    for t in (0.1, 0.2):
+        m.insert(pts, lab, t)
+    occ = m.cost_grid()                                    # rows along y, 0.2 m cells
+    assert occ[-1, 10] == 100 and occ[2, 10] == 0          # sidewalk lethal, road free
+    assert occ[10, 10] == 12                               # lane line: Nav2 cost ~30
+    assert occ[0, 0] == 0                                  # the speck is dropped
