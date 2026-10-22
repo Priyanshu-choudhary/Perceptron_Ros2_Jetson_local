@@ -50,7 +50,7 @@ def test_check_and_verdict():
 def test_every_scenario_limit_names_a_metric_the_suite_produces():
     produced = set(sc.extract_metrics(SUMMARIES)) | {
         'health.nodes_missing', 'health.outputs_after_dropout', 'rate.realtime_factor'}
-    prefixes = ('cloud.', 'fusion.', 'tracking.', 'prediction.', 'costmap.', 'loc.')
+    prefixes = ('cloud.', 'fusion.', 'tracking.', 'prediction.', 'costmap.', 'loc.', 'nav.')
     for name, spec in sc.SCENARIOS.items():
         assert spec['stack'] in sc.EVALUATORS
         for metric, op, _ in spec['limits']:
@@ -78,3 +78,25 @@ def test_dropout_spec_parsing():
     assert parse_dropouts('') == []
     with pytest.raises(ValueError):
         parse_dropouts('radar:1:1')
+
+
+def test_rect_distance():
+    a = sc.box_corners(0.0, 0.0, 0.0, -1.0, 1.0, -0.5, 0.5)
+    b = sc.box_corners(3.0, 0.0, 0.0, -0.5, 0.5, -0.5, 0.5)          # 1.5 m gap along x
+    assert sc.rect_distance(a, b) == pytest.approx(1.5)
+    c = sc.box_corners(1.2, 0.0, 0.7853981633974483, -0.5, 0.5, -0.5, 0.5)   # rotated, overlapping
+    assert sc.rect_distance(a, c) == 0.0
+    d = sc.box_corners(0.0, 2.0, 0.0, -0.2, 0.2, -0.2, 0.2)          # pedestrian beside the car
+    assert sc.rect_distance(a, d) == pytest.approx(1.3)
+    # the frame offset: a rear-axle frame box [-0.3, 2.1] seen from a car heading +y
+    e = sc.box_corners(0.0, 0.0, 1.5707963267948966, -0.3, 2.1, -0.8, 0.8)
+    assert e[:, 1].min() == pytest.approx(-0.3) and e[:, 1].max() == pytest.approx(2.1)
+
+
+def test_nav_scenarios_are_complete():
+    for name in ('nav_open', 'nav_cars', 'nav_people', 'nav_mixed'):
+        spec = sc.SCENARIOS[name]
+        assert spec['stack'] == 'navigation' and '--control ros' in spec['bridge']
+        assert ('road' in spec['goal']) != ('ahead' in spec['goal'])
+        names = [m for m, _, _ in spec['limits']]
+        assert 'nav.reached' in names and 'nav.collisions' in names

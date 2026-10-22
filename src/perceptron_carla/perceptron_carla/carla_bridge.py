@@ -24,8 +24,17 @@ Ground truth (evaluation and training ONLY -- never feed these to the EKF or a m
   /carla/camera/boxes_debug      Image bgr8, /carla/ground_truth MarkerArray
   /carla/ground_truth/lidar_semantic  PointCloud2 x,y,z,obj_idx,obj_tag: same rays as the lidar
   /carla/ground_truth/objects   perceptron_msgs/TrackedObjectArray, carla_world: true pose + velocity
-  /carla/bridge_info             std_msgs/String (latched) JSON: tf_mode, mount, ego_id, host box
+  /carla/bridge_info             std_msgs/String (latched) JSON: tf_mode, mount, ego_id, host box,
+                                 GNSS origin, control mode
+  /carla/ego/collision           std_msgs/String JSON per collision of the ego (the referee for Stage 11)
+Control (--control ros: Nav2 or any ROS node drives the car; see vehicle_control.py)
+  /cmd_vel  in                   geometry_msgs/Twist: forward speed + yaw rate -> throttle/brake/steer
+  /carla/estop  in               std_msgs/Bool: true brakes to a stop and holds until false
+  /carla/ego/control             Float32MultiArray [v_cmd, w_cmd, v, throttle, steer, brake, cmd_age]
   /carla/map/lanes               MarkerArray (latched), carla_world: lane centres, markings, road edges
+  /carla/map/road_graph          String (latched) JSON {"frame", "lanes": [[[x, y], ...], ...]}: lane
+                                 centre polylines, the road network gps_goal_node routes on (the
+                                 rover's equivalent would come from OpenStreetMap)
 Visualisation
   /carla/ego_marker              MarkerArray (latched), base_footprint: the host car + sensor rig
   /clock
@@ -71,8 +80,8 @@ from builtin_interfaces.msg import Time
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import Image, CameraInfo, Imu, NavSatFix, NavSatStatus, PointCloud2, PointField
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
-from std_msgs.msg import String
+from geometry_msgs.msg import TransformStamped, Twist
+from std_msgs.msg import Bool, Float32MultiArray, String
 from visualization_msgs.msg import Marker, MarkerArray
 from vision_msgs.msg import (Detection2D, Detection2DArray, Detection3D, Detection3DArray,
                              ObjectHypothesisWithPose)
@@ -81,6 +90,7 @@ from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 from perceptron_msgs.msg import TrackedObject, TrackedObjectArray
 
 from perceptron_carla import sim_sensors as ss
+from perceptron_carla import vehicle_control as vc
 from perceptron_carla import viz_markers as vm
 
 # ---------------------------------------------------------------- frames
@@ -420,6 +430,38 @@ class CarlaBridge(Node):
             self.gnss_model = ss.Gnss(self.rng, args.gnss_bias, args.gnss_noise)
             self.gnss_origin = tuple(float(v) for v in args.gnss_origin.split(","))
 
+        # collision sensor: every contact of the ego, with what. CARLA calls back from its own
+        # thread, so events are queued and published from the tick loop.
+        self.collisions = queue.Queue()
+        self.n_collisions = 0
+        c_bp = bp_lib.find("sensor.other.collision")
+        c_sensor = self.world.spawn_actor(c_bp, carla.Transform(), attach_to=self.ego)
+        self.actors.append(c_sensor)
+        self.sensors.append(c_sensor)
+        c_sensor.listen(self.collisions.put)
+        self.pub_collision = self.create_publisher(String, "/carla/ego/collision", 10)
+
+        # --control ros: /cmd_vel drives the car
+        self.controller = None
+        if args.control == "ros":
+            if args.autopilot or args.ego_speed > 0:
+                raise SystemExit("--control ros cannot be combined with --autopilot or --ego-speed")
+            self.controller = vc.TwistController(
+                wheelbase=self.mount.wheelbase, max_wheel_steer=math.radians(self.mount.max_steer_deg),
+                max_steer=math.radians(args.max_steer_deg), max_speed=args.max_speed,
+                max_reverse=args.max_reverse, timeout=args.cmd_timeout)
+            self.cmd = (0.0, 0.0)
+            self.cmd_t = -math.inf                      # sim time of the last /cmd_vel
+            self.sim_now = 0.0
+            self.estop = False
+            self.create_subscription(Twist, "/cmd_vel", self._cmd_cb, 10)
+            self.create_subscription(Bool, "/carla/estop", self._estop_cb, 10)
+            self.pub_control = self.create_publisher(Float32MultiArray, "/carla/ego/control", 10)
+            self.get_logger().info(
+                f"control: /cmd_vel -> car, max {args.max_speed:.1f} m/s, steer <= {args.max_steer_deg:.0f} deg "
+                f"(min turning radius {self.controller.min_turning_radius():.2f} m), "
+                f"watchdog {args.cmd_timeout:.2f} s")
+
         # The EKFs anchor odom/map where the robot is when they start, and the bridge anchors
         # carla_world -> map at the spawn pose, so in ekf mode the ego stands still on its
         # brakes until localization has had time to start -- as a real robot would.
@@ -671,6 +713,8 @@ class CarlaBridge(Node):
             "tf_mode": self.args.tf_mode, "mount": self.args.mount, "vehicle": vehicle_id,
             "ego_id": self.ego.id, "rig_x": self.mount.rig_x, "host_box_base_footprint": host_box,
             "hz": self.args.hz, "lidar_gt": bool(self.args.lidar_gt),
+            "gnss_origin": [float(v) for v in self.args.gnss_origin.split(",")],
+            "control": self.args.control, "wheelbase": self.mount.wheelbase,
         }
         self.pub_info_json = self.create_publisher(String, "/carla/bridge_info", qos)
         self.pub_info_json.publish(String(data=json.dumps(info)))
@@ -693,6 +737,10 @@ class CarlaBridge(Node):
         markers = vm.lane_marker_array(lanes, FRAME_WORLD)
         self.pub_lanes = self.create_publisher(MarkerArray, "/carla/map/lanes", qos)
         self.pub_lanes.publish(markers)
+        graph = {"frame": FRAME_WORLD, "junction": [bool(ln["junction"]) for ln in lanes],
+                 "lanes": [[[round(x, 2), round(y, 2)] for x, y, _ in ln["centre"]] for ln in lanes]}
+        self.pub_graph = self.create_publisher(String, "/carla/map/road_graph", qos)
+        self.pub_graph.publish(String(data=json.dumps(graph)))
         self.get_logger().info(f"lane map: {len(lanes)} lanes, "
                                f"{sum(len(m.points) // 2 for m in markers.markers)} segments "
                                f"({time.time() - t0:.1f} s) -> /carla/map/lanes")
@@ -718,6 +766,7 @@ class CarlaBridge(Node):
         frame = self.world.tick()
         snap = self.world.get_snapshot()
         sim_t = snap.timestamp.elapsed_seconds
+        self.sim_now = sim_t
         stamp = stamp_from_sec(sim_t)
         self.pub_clock.publish(Clock(clock=stamp))
         if not self.released and sim_t - self.start_time >= self.hold:
@@ -791,6 +840,9 @@ class CarlaBridge(Node):
         v_fwd, w_z = self.publish_ego(stamp, ego_tf)
         if self.crossers:
             self.drive_crossers()
+        if self.controller is not None:
+            self.apply_ros_control(stamp, sim_t, v_fwd)
+        self.publish_collisions(sim_t)
         if self.args.ego_speed > 0 and self.released and not self.args.autopilot:
             # straight ahead at a set speed: the ego-motion compensation test (static
             # objects must come out at ~0 m/s in odom while the robot moves)
@@ -811,6 +863,46 @@ class CarlaBridge(Node):
         self.publish_ground_truth(frame, sim_t, stamp, actors)
         if self.args.boxes and cam_on:           # the stand-in detector runs on the camera
             self.publish_boxes_2d(stamp, data["rgb"].transform, rgb, depth, inst_ids, inst_tags, actors)
+
+    # ------------------------------------------------------------ ROS control, collisions
+    def _cmd_cb(self, msg):
+        self.cmd = (msg.linear.x, msg.angular.z)
+        self.cmd_t = self.sim_now
+
+    def _estop_cb(self, msg):
+        if bool(msg.data) != self.estop:
+            self.get_logger().warn("E-STOP " + ("ON" if msg.data else "released"))
+        self.estop = bool(msg.data)
+
+    def apply_ros_control(self, stamp, sim_t, v_fwd):
+        age = sim_t - self.cmd_t
+        held = not self.released
+        c = self.controller.step(self.cmd[0], self.cmd[1], v_fwd, 1.0 / self.args.hz, age,
+                                 estop=self.estop or held)
+        self.ego.apply_control(carla.VehicleControl(
+            throttle=float(c.throttle), steer=float(c.steer), brake=float(c.brake), reverse=c.reverse))
+        self.pub_control.publish(Float32MultiArray(data=[
+            float(self.cmd[0]), float(self.cmd[1]), float(v_fwd), float(c.throttle), float(c.steer),
+            float(c.brake), float(min(age, 1e3))]))
+        if c.state == "stale" and math.isfinite(self.cmd_t):
+            self.get_logger().warn("no /cmd_vel for %.1f s: braking" % age, throttle_duration_sec=5.0)
+
+    def publish_collisions(self, sim_t):
+        while True:
+            try:
+                ev = self.collisions.get_nowait()
+            except queue.Empty:
+                return
+            self.n_collisions += 1
+            imp = ev.normal_impulse
+            other = ev.other_actor
+            info = {"t": round(sim_t, 3), "n": self.n_collisions,
+                    "other_id": other.id if other else 0,
+                    "other_type": other.type_id if other else "unknown",
+                    "impulse": round(math.sqrt(imp.x ** 2 + imp.y ** 2 + imp.z ** 2), 1)}
+            self.pub_collision.publish(String(data=json.dumps(info)))
+            self.get_logger().warn(f"COLLISION #{self.n_collisions} with {info['other_type']} "
+                                   f"(impulse {info['impulse']})", throttle_duration_sec=1.0)
 
     SEM_LIDAR_DTYPE = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("cos", "<f4"),
                                 ("obj_idx", "<u4"), ("obj_tag", "<u4")])
@@ -1176,6 +1268,14 @@ def parse_args(argv=None):
                    help="gt: bridge publishes map->odom->base_footprint from ground truth; "
                         "ekf: leave them to robot_localization (sim_localization.launch.py)")
     g.add_argument("--autopilot", action="store_true", help="ego drives itself (Traffic Manager)")
+    g.add_argument("--control", choices=("none", "ros"), default="none",
+                   help="ros: /cmd_vel drives the ego (Nav2); see vehicle_control.py")
+    g.add_argument("--max-speed", type=float, default=4.0, help="--control ros: speed limit, m/s")
+    g.add_argument("--max-reverse", type=float, default=1.0, help="--control ros: reverse limit, m/s")
+    g.add_argument("--max-steer-deg", type=float, default=35.0,
+                   help="--control ros: steering limit, deg of wheel angle (sets the turning radius)")
+    g.add_argument("--cmd-timeout", type=float, default=0.5,
+                   help="--control ros: brake if /cmd_vel is older than this, sim s")
     g.add_argument("--ego-speed", type=float, default=0.0,
                    help="drive straight ahead at this speed, m/s (no autopilot): ego-motion test")
     g.add_argument("--hold-seconds", type=float, default=-1.0,

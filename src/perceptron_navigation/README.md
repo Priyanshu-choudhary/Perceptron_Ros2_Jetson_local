@@ -534,3 +534,17 @@ then costmap, then the controller.
 | AR overlay: video fine, nothing drawn | Read the HUD, which always says which case it is. `no plan - planner not running` means nothing publishes `/plan`, so Nav2 is not up. `no plan - idle, send a goal` means Nav2 is up and waiting. `no tf <frame> -> camera_optical_link` means the transform chain does not reach the camera — usually the robot bringup is not running, so there is no `odom` either. `plan outside camera view` means it projected but every point failed the cull. |
 | AR overlay: Jetson says `0 payloads` | The host node is not running or cannot reach the Jetson. `0 payloads` with frames still flowing is the renderer working correctly on an empty inbox. The host logs `N overlay frames dropped and none sent` when it is pushing into the void. |
 | AR overlay: path lags the picture | Expected while moving: the TF lookup is `Time()` (latest) because the video crosses a link with no shared clock. The HUD says `overlay lagging N ms` past 350 ms and the overlay is dropped past 700 ms. |
+
+## GPS goals and predictive yielding (from the CARLA Stage 11 work)
+
+Two nodes here are robot-side and were built and tested in CARLA (see perceptron_carla's README, Stages 10-11):
+
+* `gps_goal_node` + `gps_goal` CLI: drive to a latitude/longitude. GPS becomes map coordinates through a datum
+  (`datum_lat`, `datum_lon`, `datum_frame`; on the rover, navsat_transform with a fixed datum makes `map` that
+  frame). The node routes straight or over a road graph (`route_mode: roads`), and hands Nav2 `NavigateToPose`
+  sub-goals 30 m apart. It also accepts RViz *Publish Point* clicks and logs their GPS. Pure logic: `geo.py`.
+* `predictive_speed_limit_node`: publishes a `/speed_limit` for controller_server from the Stage 7 predictions,
+  so the robot doesn't reach a spot on its plan before a crossing person has cleared it, and can always stop
+  short of it. Pure logic: `yielding.py`.
+
+Neither is in the rover's launch files yet: the rover's `nav2_outdoor_gps.yaml` and its launch are untouched.

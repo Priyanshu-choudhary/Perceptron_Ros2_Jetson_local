@@ -10,6 +10,8 @@
       -> /costmap/dynamic_risk  OccupancyGrid: predicted paths, time-to-encounter weighted
                                                                          -- layer 3
       -> /costmap/combined      OccupancyGrid: max of layers 2 and 3; the planner input
+      -> /costmap/nav           OccupancyGrid: max of layer 1 (lethal only) and 3, for Nav2,
+                                which inflates with the robot's real footprint itself
       -> /costmap/stats         Float32MultiArray [ms, voxels, lethal cells, risk cells,
                                 moving objects, data age ms]
 
@@ -82,7 +84,7 @@ class CostmapNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST)
         self.pubs = {name: self.create_publisher(OccupancyGrid, '/costmap/' + name, 1)
-                     for name in ('obstacles', 'inflated', 'dynamic_risk', 'combined')}
+                     for name in ('obstacles', 'inflated', 'dynamic_risk', 'combined', 'nav')}
         self.pub_vox = self.create_publisher(PointCloud2, '/costmap/voxels', qos)
         self.pub_stats = self.create_publisher(Float32MultiArray, '/costmap/stats', 10)
         obst = message_filters.Subscriber(self, PointCloud2, '/perception/points_obstacles', qos_profile=qos)
@@ -157,7 +159,8 @@ class CostmapNode(Node):
         header.frame_id = self.frame
         obstacle_cost = np.where(lethal, cm.LETHAL, 0).astype(np.uint8)
         for name, grid in (('obstacles', obstacle_cost), ('inflated', inflated),
-                           ('dynamic_risk', dyn_cost), ('combined', combined)):
+                           ('dynamic_risk', dyn_cost), ('combined', combined),
+                           ('nav', np.maximum(obstacle_cost, dyn_cost))):
             self.pubs[name].publish(self._grid(header, grid, known if name != 'dynamic_risk' else None))
         if self.pub_vox.get_subscription_count():
             self.pub_vox.publish(self._voxels(header))
